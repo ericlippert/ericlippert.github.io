@@ -8,36 +8,38 @@ function test(f)
     }
     catch(error)
     {
-        return "FAIL: " + f.name + "\nUnhandled error:\n" + error + "\n";
+        return "FAIL: " + f.name + "\n" + error + "\n";
     }
-    return "SUCCESS: " + f.name;  
+    return "PASS:" + f.name;  
 }
 
-function expect(f, expected)
+function fail(message = "")
+{
+    throw new Error("Assertion failed: " + message);
+}
+
+function assertThrows(f)
 {
     try
     {
-        const observed = f();
-        if (observed !== expected)
-        {
-            return "FAIL: " + f.name + "\nExpected:\n" + expected + "\nObserved:\n" + observed + "\n";
-        }
+        f();
     }
     catch(error)
     {
-        return "FAIL: " + f.name + "\nUnhandled error:\n" + error + "\n";
+        return;
     }
-    return "SUCCESS: " + f.name + "\n";
+    fail("Did not throw.");
 }
 
-function assert(b)
+function assert(b, message = "")
 {
     if (!b)
-        throw new Error("Assertion failed");
+        fail(message);
 }
 
 function assertEqual(observed, expected)
 {
-    if (observed != expected)
-        throw new Error("Assertion failed\nExpected:\n" + expected + "\nObserved:\n" + observed + "\n");
+    assert(
+        observed === expected, 
+        "\nExpected:\n" + expected + "\nObserved:\n" + observed + "\n");
 }
