@@ -13,4 +13,5 @@ submitbutton.addEventListener('click', () => {
     submitbutton.style.display = 'none';
     console.log(storedData);
     outputtext.textContent = "hello " + storedData + ", welcome to the dungeon.";
+    outputtext.classList.add("dungeon");
 });

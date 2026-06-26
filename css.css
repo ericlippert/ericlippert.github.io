@@ -1,4 +1,8 @@
-.dungeon {
-        font-family: monospace;
-        white-space: pre;
-    }
+.dungeon 
+{
+    font-family: monospace;
+    white-space: pre;
+    border: 1px solid black; /* Drawing a box with a CSS border now instead of ascii text. */
+    display: inline-block; /* the box stretches all theway to the side without this */
+    padding: 5px 10px; /* adds area inside the box */
+}
