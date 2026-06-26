@@ -1,3 +1,6 @@
+"use strict";
+window.onerror = alert;
+
 const inputbox = document.getElementById('inputbox');
 const submitbutton = document.getElementById('submitbutton');
 const outputtext = document.getElementById('outputtext');
