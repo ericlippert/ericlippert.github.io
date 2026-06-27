@@ -16,3 +16,4 @@ function testGrid_1()
     assertThrows(() => g.get(1, 5));
     assertThrows(() => g.get(5, 1));
 }
+// i think this file is supposed to test the grid-making file with specific examples to make sure it works. it's able to load functions from the other js file test.js because all the js files are loaded in html
