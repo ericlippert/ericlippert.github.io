@@ -18,21 +18,21 @@ if (submitbutton) {
         submitbutton.style.display = 'none';
         console.log(storedData);
         outputtext.textContent = "hello " + storedData + ", welcome to the dungeon.";
-        const roomdata = createtherooms();//instead of just running the function that creates the room, sitll dothat, but save the data (grid and rooms)
+        const roomData = createtherooms();
         
         const dungeon = new Dungeon();
-        const level = new Level(roomdata.grid);
+        const level = new Level(roomData.grid);
         level.parent = dungeon;
 
         const player = new Player();
         player.name = storedData;
         player.parent = level;
         
-        const startroom = roomdata.rooms[Math.floor(Math.random() * roomdata.rooms.length)];//random start room
-        player.x = Math.floor(startroom.left + startroom.width / 2);//player (invisible as of writing) in middle of room
-        player.y = Math.floor(startroom.top + startroom.height / 2);
+        const startRoom = roomData.rooms[Math.floor(Math.random() * roomData.rooms.length)];
+        player.x = Math.floor(startRoom.left + startRoom.width / 2);
+        player.y = Math.floor(startRoom.top + startRoom.height / 2);
         
-        console.log("made ", dungeon);
+        console.log("Dungeon system constructed:", dungeon);
         
         outputtext.classList.add("dungeon");
     });
@@ -111,43 +111,43 @@ class Grid {
 class Entity {
     constructor() {
         if (new.target === Entity) {
-            throw new Error("can't do that");//because you're supposed to make a specific kind of entity ("abstract class")
+            throw new Error("Cannot instantiate abstract class Entity.");
         }
-        this._parent = null; //defaukt parents/childten (nothing)
+        this._parent = null;
         this._children = [];
     }
 
     get parent() {
-        return this._parent; //using a private variable so that there's no infinite loop 
+        return this._parent;
     }
 
-    set parent(newparent) {
-        if (this._parent === newparent) return; //stop if the parent is already what it was trying t oeb set to
+    set parent(newParent) {
+        if (this._parent === newParent) return;
 
-        const oldparent = this._parent;
-        this._parent = newparent;
+        const oldParent = this._parent;
+        this._parent = newParent;
 
-        if (oldparent) { //if there was an old parent, remove it
-            oldparent.removechild(this);
+        if (oldParent) {
+            oldParent.removeChild(this);
         }
 
-        if (newparent) { //if there's a new parent, add it
-            newparent.addchild(this);
+        if (newParent) {
+            newParent.addChild(this);
         }
     }
 
     get children() {
-        return [...this._children];//... means to makea copy. we need that so that if someone tries to mess with the child list directly, it doesn't mess with our internal list.
+        return [...this._children];
     }
 
-    addchild(child) {
-        if (!this._children.includes(child)) {//only run if this isn't already the case
-            this._children.push(child); //adds the child to the children list
-            child.parent = this; // 'this' is the entity that is the paprent (th8is sets the child's parent)
+    addChild(child) {
+        if (!this._children.includes(child)) {
+            this._children.push(child);
+            child.parent = this;
         }
     }
 
-    removechild(child) {
+    removeChild(child) {
         const index = this._children.indexOf(child);
         if (index !== -1) {
             this._children.splice(index, 1);
@@ -156,28 +156,28 @@ class Entity {
     }
 }
 
-class Dungeon extends Entity { //extends means it's a modified version of the entity class. super(); means to just do the original thing from the normal entity class.
+class Dungeon extends Entity {
     constructor() {
         super();
     }
-    set parent(newparent) {
-        if (newparent !== null) {
-            throw new Error("the parent of a dungeon entity must always be null.");
+    set parent(newParent) {
+        if (newParent !== null) {
+            throw new Error("The parent of a Dungeon entity must always be null.");
         }
-        super.parent = newparent;
+        super.parent = newParent;
     }
 }
 
 class Level extends Entity {
-    constructor(mapgrid) {
+    constructor(mapGrid) {
         super();
-        this.map = mapgrid;
+        this.map = mapGrid;
     }
-    set parent(newparent) {
-        if (newparent !== null && !(newparent instanceof Dungeon)) {
-            throw new Error("the parent of a level must be a dungeon.");
+    set parent(newParent) {
+        if (newParent !== null && !(newParent instanceof Dungeon)) {
+            throw new Error("The parent of a Level must be a Dungeon.");
         }
-        super.parent = newparent;
+        super.parent = newParent;
     }
 }
 
@@ -188,11 +188,11 @@ class Player extends Entity {
         this.x = 0;
         this.y = 0;
     }
-    set parent(newparent) {
-        if (newparent !== null && !(newparent instanceof Level)) {
-            throw new Error("the parent of a player must be a level.");
+    set parent(newParent) {
+        if (newParent !== null && !(newParent instanceof Level)) {
+            throw new Error("The parent of a Player must be a Level.");
         }
-        super.parent = newparent;
+        super.parent = newParent;
     }
 }
 
@@ -556,11 +556,10 @@ function createtherooms() {
 
     if (setofsets.length === 1) {
         gamegridtext.textContent = gamegrid.toString();
-        return { rooms: existingrooms, grid: gamegrid }; // returning the data of the rooms and grid so it can be used in the rest of the game other than this function that just makes the initial grid
-    
+        return { rooms: existingrooms, grid: gamegrid }; // success
     }
     } // end of the 100 tries loop
-    throw new Error("didn't work");
+    throw new Error("Failed to generate a connected dungeon after 100 attempts.");
 
 
 // v  just so i dont get confused this ends the createtherooms function
