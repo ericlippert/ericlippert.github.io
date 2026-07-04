@@ -31,8 +31,7 @@ if (submitbutton) {
 
 
 // i moved it here. the above code won't run in test.html because there is no submitbutton. i'd ask that all the actual code for the site goes HERE in this one js file and not scattered between many JS files. just personal preference
-class Grid
-{
+class Grid {
     // TODO: Fill this in so that the tests pass.
 
     // A grid is a rectangular array where the top left corner is (0, 0) and the bottom right
@@ -94,10 +93,8 @@ class Grid
 
 
 
-class rectroom
-{
-    constructor(left, top, width, height)
-    {
+class rectroom {
+    constructor(left, top, width, height) {
         this.left = left;
         this.top = top;
         this.width = width;
@@ -107,9 +104,9 @@ class rectroom
     // says true if the other rectangle is entirely inside this one.
     contains(other) {
         return other.left >= this.left &&
-               (other.left + other.width) <= (this.left + this.width) &&  //right side
-               other.top >= this.top &&
-               (other.top + other.height) <= (this.top + this.height);    //bottom side
+            (other.left + other.width) <= (this.left + this.width) &&  //right side
+            other.top >= this.top &&
+            (other.top + other.height) <= (this.top + this.height);    //bottom side
     }
 
     // says  true if the other rectangle overlaps with this one at all.
@@ -126,10 +123,11 @@ class rectroom
 
 
 
-function createtherooms()
-{
+function createtherooms() {
 
 
+
+    for (let attempt = 0; attempt < 100; attempt++) {
 
     //code for creating random rooms
     let existingrooms = [];
@@ -138,14 +136,13 @@ function createtherooms()
     const gridHeight = 50;
     let roomsleft = howmanyroomstomake;
 
-    while (roomsleft > 0)
-    {
+    while (roomsleft > 0) {
         let width = Math.floor(Math.random() * 5) + 4; // random 4 to 8
         let height = Math.floor(Math.random() * 5) + 4; // random 4 to 8
         let left = Math.floor(Math.random() * (gridWidth - width + 1)); // random 0 to 50 minus the width (so it doesn't extend out)
         let top = Math.floor(Math.random() * (gridHeight - height + 1)); // random 0 to 50 minus the height (so it doesn't extend out)
         let newroom = new rectroom(left, top, width, height);
-        
+
         let overlaps = false;
         let iscontained = false;
         for (let i = 0; i < existingrooms.length; i++) {
@@ -161,9 +158,9 @@ function createtherooms()
         }
 
         if (!overlaps && !iscontained) {
-            existingrooms.push(newroom); 
+            existingrooms.push(newroom);
             roomsleft -= 1;
-            
+
         }
     }
     console.log(existingrooms);
@@ -181,48 +178,43 @@ function createtherooms()
     //put the rooms into the grid
     for (let i = 0; i < existingrooms.length; i++) {
         const room = existingrooms[i];
-        
+
         for (let y = room.top; y < room.top + room.height; y++) { //travel down the grid foreach row
             for (let x = room.left; x < room.left + room.width; x++) { // each pixel on the row on the grid (column)
                 // this is the kinda spaghetti code to draw room borders and the hollow inside
-                if (x === room.left) 
-                {
-                    if (y === room.top){
+                if (x === room.left) {
+                    if (y === room.top) {
                         gamegrid.set(x, y, "┌");
                     }
-                    else if (y === room.top + room.height - 1){
+                    else if (y === room.top + room.height - 1) {
                         gamegrid.set(x, y, "└");
                     }
-                    else{
+                    else {
                         gamegrid.set(x, y, "│");
                     }
                 }
 
-                else if (x === room.left + room.width - 1)
-                {
-                    if (y === room.top){
+                else if (x === room.left + room.width - 1) {
+                    if (y === room.top) {
                         gamegrid.set(x, y, "┐");
                     }
-                    else if (y === room.top + room.height - 1){
+                    else if (y === room.top + room.height - 1) {
                         gamegrid.set(x, y, "┘");
                     }
-                    else{
+                    else {
                         gamegrid.set(x, y, "│");
                     }
                 }
 
-                else if (y === room.top)
-                {
+                else if (y === room.top) {
                     gamegrid.set(x, y, "─");
                 }
 
-                else if (y === room.top + room.height - 1)
-                {
+                else if (y === room.top + room.height - 1) {
                     gamegrid.set(x, y, "─");
                 }
-                
-                else
-                {
+
+                else {
                     gamegrid.set(x, y, " ");
                 }
             }
@@ -232,15 +224,15 @@ function createtherooms()
 
 
     // straight tunnel code
-    
+
     function canconnectvertical(roomA, roomB) {
-        const sharedLeft  = Math.max(roomA.left, roomB.left);
+        const sharedLeft = Math.max(roomA.left, roomB.left);
         const sharedRight = Math.min(roomA.left + roomA.width, roomB.left + roomB.width);
         return sharedLeft < sharedRight;
     }
 
     function canconnecthorizontal(roomA, roomB) {
-        const sharedTop    = Math.max(roomA.top, roomB.top);
+        const sharedTop = Math.max(roomA.top, roomB.top);
         const sharedBottom = Math.min(roomA.top + roomA.height, roomB.top + roomB.height);
         return sharedTop < sharedBottom;
     }
@@ -249,18 +241,17 @@ function createtherooms()
         if (x1 === x2) {
             // vertical tunnel x is fixed, y changes
             const startY = Math.min(y1, y2) + 1;
-            const endY   = Math.max(y1, y2) - 1;
+            const endY = Math.max(y1, y2) - 1;
             for (let y = startY; y <= endY; y++) {
                 if (gamegrid.get(x1, y) !== "█") {
                     return true;
                 }
             }
-        } 
-        
-        else 
-        {
+        }
+
+        else {
             const startX = Math.min(x1, x2) + 1; //the +1 here and the -1 below make it only scan tiles between the rooms, not the room borders themselves
-            const endX   = Math.max(x1, x2) - 1;
+            const endX = Math.max(x1, x2) - 1;
             for (let x = startX; x <= endX; x++) {
                 if (gamegrid.get(x, y1) !== "█") {
                     return true; // hit not empty space
@@ -271,46 +262,46 @@ function createtherooms()
     }
 
     function digverticaltunnel(roomA, roomB) {
-        const sharedleft  = Math.max(roomA.left, roomB.left);
+        const sharedleft = Math.max(roomA.left, roomB.left);
         const sharedright = Math.min(roomA.left + roomA.width, roomB.left + roomB.width);
         const tunnelX = Math.floor((sharedleft + sharedright) / 2);
 
-        const toproom    = roomA.top < roomB.top ? roomA : roomB;
+        const toproom = roomA.top < roomB.top ? roomA : roomB;
         const bottomroom = roomA.top < roomB.top ? roomB : roomA;
 
         const startY = toproom.top + toproom.height - 1;
-        const endY   = bottomroom.top;
+        const endY = bottomroom.top;
 
-        if (tunnelcollides(tunnelX, startY, tunnelX, endY)) 
-        { //quickly check if anytyhing in the way
-            return;
+        if (tunnelcollides(tunnelX, startY, tunnelX, endY)) { //quickly check if anytyhing in the way
+            return false;
         }
 
-        for (let y = startY; y <= endY; y++) 
-        {
+        for (let y = startY; y <= endY; y++) {
             gamegrid.set(tunnelX, y, " "); //this makes the tunnel be blank space, INCLIDING the room border themselves (like a door)
         }
+        return true;
     }
 
     function dighorizontaltunnel(roomA, roomB) {
-        const sharedTop    = Math.max(roomA.top, roomB.top);
+        const sharedTop = Math.max(roomA.top, roomB.top);
         const sharedBottom = Math.min(roomA.top + roomA.height, roomB.top + roomB.height);
         const tunnelY = Math.floor((sharedTop + sharedBottom) / 2); //so there can only be one tunnel between rooms (same thuing for vertical)
 
         // find out which room is to the left and which is to the right
-        const leftRoom  = roomA.left < roomB.left ? roomA : roomB;
+        const leftRoom = roomA.left < roomB.left ? roomA : roomB;
         const rightRoom = roomA.left < roomB.left ? roomB : roomA;
 
         const startX = leftRoom.left + leftRoom.width - 1;
-        const endX   = rightRoom.left;
+        const endX = rightRoom.left;
 
         if (tunnelcollides(startX, tunnelY, endX, tunnelY)) {
-            return;
+            return false;
         }
 
         for (let x = startX; x <= endX; x++) {
             gamegrid.set(x, tunnelY, " ");
         }
+        return true;
     }
 
     function digbenttunnel(roomA, roomB) {
@@ -318,39 +309,37 @@ function createtherooms()
         const cyA = Math.floor(roomA.top + roomA.height / 2);
         const cxB = Math.floor(roomB.left + roomB.width / 2);
         const cyB = Math.floor(roomB.top + roomB.height / 2);
-        
+
         let hStart1;
         if (cxB > cxA) //check whether to start on right wall or left wall of roomA
         {
             hStart1 = roomA.left + roomA.width - 1; // right wall
         }
-        else 
-        {
+        else {
             hStart1 = roomA.left; // left wall
         }
-        
+
         const hEnd1 = cxB;
-        
+
         const vStart1 = cyA;
         let vEnd1;
         if (cyB > cyA) // check whether to end on top wall or bottom wall of roomB
         {
             vEnd1 = roomB.top; // top wall
         }
-        else
-        {
+        else {
             vEnd1 = roomB.top + roomB.height - 1; // bottom wall
         }
 
         const hSeg1Collides = tunnelcollides(hStart1, cyA, hEnd1, cyA);  //checks if the horizontal part of the tunnel collides with anything
         const vSeg1Collides = tunnelcollides(cxB, vStart1, cxB, vEnd1);  //checks if the vertical part of the tunnel collides with anything
-        const corner1Solid  = gamegrid.get(cxB, cyA) === "█"; //checks if the corner is empty
+        const corner1Solid = gamegrid.get(cxB, cyA) === "█"; //checks if the corner is empty
 
         if (!hSeg1Collides && !vSeg1Collides && corner1Solid) // if those above three things are true then dig the tunnel
         {
 
             const startX = Math.min(cxA, cxB); // start at the leftmost x coordinate of either room a or b
-            const endX   = Math.max(cxA, cxB); // end at the rightmost x coordinate of either room a or b
+            const endX = Math.max(cxA, cxB); // end at the rightmost x coordinate of either room a or b
 
             for (let x = startX; x <= endX; x++) // loop through the x coordinates
             {
@@ -358,10 +347,9 @@ function createtherooms()
             }
 
             const startY = Math.min(cyA, cyB); //same thing but up
-            const endY   = Math.max(cyA, cyB);
+            const endY = Math.max(cyA, cyB);
 
-            for (let y = startY; y <= endY; y++) 
-            {
+            for (let y = startY; y <= endY; y++) {
                 gamegrid.set(cxB, y, " ");
             }
 
@@ -373,41 +361,36 @@ function createtherooms()
         {
             vStart2 = roomA.top + roomA.height - 1; // bottom wall
         }
-        else
-        {
+        else {
             vStart2 = roomA.top; // top wall
         }
-        const vEnd2   = cyB;
+        const vEnd2 = cyB;
         const hStart2 = cxA;
         let hEnd2;
         if (cxB > cxA) // check whether to end on left wall or right wall of roomB
         {
             hEnd2 = roomB.left; // left wall
         }
-        else
-        {
+        else {
             hEnd2 = roomB.left + roomB.width - 1; // right wall
         }
 
         const vSeg2Collides = tunnelcollides(cxA, vStart2, cxA, vEnd2);
         const hSeg2Collides = tunnelcollides(hStart2, cyB, hEnd2, cyB);
-        const corner2Solid  = gamegrid.get(cxA, cyB) === "█";
+        const corner2Solid = gamegrid.get(cxA, cyB) === "█";
 
-        if (!vSeg2Collides && !hSeg2Collides && corner2Solid) 
-        {
+        if (!vSeg2Collides && !hSeg2Collides && corner2Solid) {
             const startY = Math.min(cyA, cyB);
-            const endY   = Math.max(cyA, cyB);
+            const endY = Math.max(cyA, cyB);
 
-            for (let y = startY; y <= endY; y++)
-            {
+            for (let y = startY; y <= endY; y++) {
                 gamegrid.set(cxA, y, " ");
             }
 
             const startX = Math.min(cxA, cxB);
-            const endX   = Math.max(cxA, cxB);
+            const endX = Math.max(cxA, cxB);
 
-            for (let x = startX; x <= endX; x++)
-            {
+            for (let x = startX; x <= endX; x++) {
                 gamegrid.set(x, cyB, " ");
             }
 
@@ -418,14 +401,18 @@ function createtherooms()
     }
 
 
-    const tunnelattempts = existingrooms.length * 2; //draw tunnels for 2x ther number of rooms
+    let setofsets = [];
+    for (let i = 0; i < existingrooms.length; i++) {
+        setofsets.push(new Set([i]));
+    }
+
+    const tunnelattempts = existingrooms.length * 20; // increased so we have enough tries to connect everything
     for (let i = 0; i < tunnelattempts; i++) {
 
         let indexA = Math.floor(Math.random() * existingrooms.length);
         let indexB = Math.floor(Math.random() * existingrooms.length);
 
-        while (indexB === indexA) 
-        {
+        while (indexB === indexA) {
             //force it to not be the same room
             indexB = Math.floor(Math.random() * existingrooms.length);
         }
@@ -433,28 +420,46 @@ function createtherooms()
         const roomA = existingrooms[indexA];
         const roomB = existingrooms[indexB];
 
+        let success = false;
         // check vertical first, then horizontal, then bent
         if (canconnectvertical(roomA, roomB)) {
-            digverticaltunnel(roomA, roomB);
-        } 
-
-        else if (canconnecthorizontal(roomA, roomB)) 
-        {
-            dighorizontaltunnel(roomA, roomB);
+            success = digverticaltunnel(roomA, roomB);
         }
 
-        else
-        {
-            digbenttunnel(roomA, roomB);
+        else if (canconnecthorizontal(roomA, roomB)) {
+            success = dighorizontaltunnel(roomA, roomB);
+        }
+
+        else {
+            success = digbenttunnel(roomA, roomB);
+        }
+
+        if (success) {
+            let setA = setofsets.find(s => s.has(indexA)); // tgets the current set within the set that has the number that room A is in
+            let setB = setofsets.find(s => s.has(indexB)); // same but b
+            if (setA && setB && setA !== setB) { // if success and they are currently not in the same set......
+                setB.forEach(val => setA.add(val)); //add (not move but add) the rooms from B to A
+                setofsets = setofsets.filter(s => s !== setB); //remove B from setofsets so it's not counted twice and will now get merged into A on the next loop
+            }
+        }
+        //^^^^^^^^^ high-tech
+
+        // if there's only 1 set left then all rooms are connected
+        if (setofsets.length === 1) {
+            break;
         }
 
     }
 
-    gamegridtext.textContent = gamegrid.toString();
+    if (setofsets.length === 1) {
+        gamegridtext.textContent = gamegrid.toString();
+        break; // success
+    }
+    } // end of the 100 tries loop
 
 
-//  v  just so i dont get confused this ends the createtherooms function
-    } // <------
+// v  just so i dont get confused this ends the createtherooms function
+   } // <------
 // ^
 
 
