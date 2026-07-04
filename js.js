@@ -240,8 +240,8 @@ function createtherooms() {
     let roomsleft = howmanyroomstomake;
 
     while (roomsleft > 0) {
-        let width = Math.floor(Math.random() * 5) + 4; // random 4 to 8
-        let height = Math.floor(Math.random() * 5) + 4; // random 4 to 8
+        let width = Math.floor(Math.random() * 5) + 4; // random width 4 to 8 tiles
+        let height = Math.floor(Math.random() * 5) + 4; // random height 4 to 8 tiles
         let left = Math.floor(Math.random() * (gridWidth - width + 1)); // random 0 to 50 minus the width (so it doesn't extend out)
         let top = Math.floor(Math.random() * (gridHeight - height + 1)); // random 0 to 50 minus the height (so it doesn't extend out)
         let newroom = new rectroom(left, top, width, height);
