@@ -103,6 +103,33 @@ class Grid {
         }
         return lines.join("\n");
     }
+
+    addroom(room) {
+        // corners
+        this.set(room.left, room.top, "┌");
+        this.set(room.right - 1, room.top, "┐");
+        this.set(room.left, room.bottom - 1, "└");
+        this.set(room.right - 1, room.bottom - 1, "┘");
+
+        // top and bottom walls
+        for (let x = room.left + 1; x < room.right - 1; x++) {
+            this.set(x, room.top, "─");
+            this.set(x, room.bottom - 1, "─");
+        }
+
+        // left and right walls
+        for (let y = room.top + 1; y < room.bottom - 1; y++) {
+            this.set(room.left, y, "│");
+            this.set(room.right - 1, y, "│");
+        }
+
+        // interior empty space
+        for (let y = room.top + 1; y < room.bottom - 1; y++) {
+            for (let x = room.left + 1; x < room.right - 1; x++) {
+                this.set(x, y, " ");
+            }
+        }
+    }
 }
 
 
@@ -424,130 +451,109 @@ function digbenttunnel(gamegrid, roomA, roomB) {
 
 
 
-function createtherooms() {
-    for (let attempt = 0; attempt < 100; attempt++) {
-        //code for creating random rooms
-        let existingrooms = [];
-        const howmanyroomstomake = boundedrandom(4, 10);
-        const gridWidth = 50;
-        const gridHeight = 50;
-        let roomsleft = howmanyroomstomake;
+function trycreaterooms() {
+    //code for creating random rooms
+    let existingrooms = [];
+    const howmanyroomstomake = boundedrandom(4, 10);
+    const gridWidth = 50;
+    const gridHeight = 50;
+    let roomsleft = howmanyroomstomake;
 
-        while (roomsleft > 0) {
-            let width = boundedrandom(4, 8);
-            let height = boundedrandom(4, 8);
-            let left = uniformrandom(gridWidth - width); // so it doesn't extend out
-            let top = uniformrandom(gridHeight - height); // so it doesn't extend out
-            let newroom = new rectroom(left, top, width, height);
+    while (roomsleft > 0) {
+        let width = boundedrandom(4, 8);
+        let height = boundedrandom(4, 8);
+        let left = uniformrandom(gridWidth - width); // so it doesn't extend out
+        let top = uniformrandom(gridHeight - height); // so it doesn't extend out
+        let newroom = new rectroom(left, top, width, height);
 
-            let overlaps = false;
-            let iscontained = false;
-            for (let i = 0; i < existingrooms.length; i++) {
-                if (newroom.overlaps(existingrooms[i])) {
-                    overlaps = true;
-                }
-                if (existingrooms[i].contains(newroom)) {
-                    iscontained = true;
-                }
-                if (overlaps || iscontained) {
-                    break;
-                }
-            }
-
-            if (!overlaps && !iscontained) {
-                existingrooms.push(newroom);
-                roomsleft -= 1;
-            }
-        }
-        console.log(existingrooms);
-
-        //create a grid and fill it with something that i keep changing and then set it to a pre element 
-        const gamegrid = new Grid(50, 50, "█");
-        gamegridtext.textContent = gamegrid.toString();
-
-        //put the rooms into the grid
+        let overlaps = false;
+        let iscontained = false;
         for (let i = 0; i < existingrooms.length; i++) {
-            const room = existingrooms[i];
-
-            // corners
-            gamegrid.set(room.left, room.top, "┌");
-            gamegrid.set(room.right - 1, room.top, "┐");
-            gamegrid.set(room.left, room.bottom - 1, "└");
-            gamegrid.set(room.right - 1, room.bottom - 1, "┘");
-
-            // top and bottom walls
-            for (let x = room.left + 1; x < room.right - 1; x++) { //set everything but the left and right corners to the ─ (hence +1 and -1)
-                gamegrid.set(x, room.top, "─");
-                gamegrid.set(x, room.bottom - 1, "─");
+            if (newroom.overlaps(existingrooms[i])) {
+                overlaps = true;
             }
-
-            // left and right walls
-            for (let y = room.top + 1; y < room.bottom - 1; y++) { //same as above
-                gamegrid.set(room.left, y, "│");
-                gamegrid.set(room.right - 1, y, "│");
+            if (existingrooms[i].contains(newroom)) {
+                iscontained = true;
             }
-
-            // interior empty space
-            for (let y = room.top + 1; y < room.bottom - 1; y++) {//also same as above but goes through each row and column and makes it blank
-                for (let x = room.left + 1; x < room.right - 1; x++) {
-                    gamegrid.set(x, y, " ");
-                }
-            }
-        }
-        gamegridtext.textContent = gamegrid.toString();
-
-        let setofsets = [];
-        for (let i = 0; i < existingrooms.length; i++) {
-            setofsets.push(new Set([i]));
-        }
-
-        const tunnelattempts = existingrooms.length * 20; // increased so we have enough tries to connect everything
-        for (let i = 0; i < tunnelattempts; i++) {
-
-            let indexA = uniformrandom(existingrooms.length - 1);
-            let indexB = uniformrandom(existingrooms.length - 1);
-
-            while (indexB === indexA) {
-                //force it to not be the same room
-                indexB = uniformrandom(existingrooms.length - 1);
-            }
-
-            const roomA = existingrooms[indexA];
-            const roomB = existingrooms[indexB];
-
-            let success = false;
-            // check vertical first, then horizontal, then bent
-            if (canconnectvertical(roomA, roomB)) {
-                success = digverticaltunnel(gamegrid, roomA, roomB);
-            }
-
-            else if (canconnecthorizontal(roomA, roomB)) {
-                success = dighorizontaltunnel(gamegrid, roomA, roomB);
-            }
-
-            else {
-                success = digbenttunnel(gamegrid, roomA, roomB);
-            }
-
-            if (success) {
-                let setA = setofsets.find(s => s.has(indexA)); // tgets the current set within the set that has the number that room A is in
-                let setB = setofsets.find(s => s.has(indexB)); // same but b
-                if (setA && setB && setA !== setB) { // if success and they are currently not in the same set......
-                    setB.forEach(val => setA.add(val)); //add (not move but add) the rooms from B to A
-                    setofsets = setofsets.filter(s => s !== setB); //remove B from setofsets so it's not counted twice and will now get merged into A on the next loop
-                }
-            }
-
-            // if there's only 1 set left then all rooms are connected
-            if (setofsets.length === 1) {
+            if (overlaps || iscontained) {
                 break;
             }
         }
 
-        if (setofsets.length === 1) {
-            gamegridtext.textContent = gamegrid.toString();
-            return { rooms: existingrooms, grid: gamegrid }; // returning the data of the rooms and grid so it can be used in the rest of the game other than this function that just makes the initial grid
+        if (!overlaps && !iscontained) {
+            existingrooms.push(newroom);
+            roomsleft -= 1;
         }
+    }
+    console.log(existingrooms);
+
+    //create a grid and fill it with something that i keep changing and then set it to a pre element 
+    const gamegrid = new Grid(50, 50, "█");
+    gamegridtext.textContent = gamegrid.toString();
+
+    for (let room of existingrooms) {
+        gamegrid.addroom(room);
+    }
+    gamegridtext.textContent = gamegrid.toString();
+
+    let setofsets = [];
+    for (let i = 0; i < existingrooms.length; i++) {
+        setofsets.push(new Set([i]));
+    }
+
+    const tunnelattempts = existingrooms.length * 20; // increased so we have enough tries to connect everything
+    for (let i = 0; i < tunnelattempts; i++) {
+
+        let indexA = uniformrandom(existingrooms.length - 1);
+        let indexB = uniformrandom(existingrooms.length - 1);
+
+        while (indexB === indexA) {
+            //force it to not be the same room
+            indexB = uniformrandom(existingrooms.length - 1);
+        }
+
+        const roomA = existingrooms[indexA];
+        const roomB = existingrooms[indexB];
+
+        let success = false;
+        // check vertical first, then horizontal, then bent
+        if (canconnectvertical(roomA, roomB)) {
+            success = digverticaltunnel(gamegrid, roomA, roomB);
+        }
+
+        else if (canconnecthorizontal(roomA, roomB)) {
+            success = dighorizontaltunnel(gamegrid, roomA, roomB);
+        }
+
+        else {
+            success = digbenttunnel(gamegrid, roomA, roomB);
+        }
+
+        if (success) {
+            let setA = setofsets.find(s => s.has(indexA)); // tgets the current set within the set that has the number that room A is in
+            let setB = setofsets.find(s => s.has(indexB)); // same but b
+            if (setA && setB && setA !== setB) { // if success and they are currently not in the same set......
+                setB.forEach(val => setA.add(val)); //add (not move but add) the rooms from B to A
+                setofsets = setofsets.filter(s => s !== setB); //remove B from setofsets so it's not counted twice and will now get merged into A on the next loop
+                }
+            }
+
+        // if there's only 1 set left then all rooms are connected
+        if (setofsets.length === 1) {
+            break;
+        }
+    }
+
+    if (setofsets.length === 1) {
+        gamegridtext.textContent = gamegrid.toString();
+        return { rooms: existingrooms, grid: gamegrid }; // returning the data of the rooms and grid so it can be used in the rest of the game other than this function that just makes the initial grid
+    }
+}
+
+function createtherooms() {
+    for (let attempt = 0; attempt < 100; attempt++) {
+        let success = trycreaterooms();
+        if (success) return success;//continues to return the data given by `return { rooms: existingrooms, grid: gamegrid }; `
     } // end of the 100 tries loop
     throw new Error("didn't work");
 } // end createtherooms
