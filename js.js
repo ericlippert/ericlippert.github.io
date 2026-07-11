@@ -32,9 +32,12 @@ if (submitbutton) {
         player.x = Math.floor(startroom.left + startroom.width / 2);//player (invisible as of writing) in middle of room
         player.y = Math.floor(startroom.top + startroom.height / 2);
         
-        console.log("made ", dungeon);
+        console.log("made ", dungeon);//added earlier because the code wasn't working before
         
-        outputtext.classList.add("dungeon");
+        const display = new Grid(level.map.width, level.map.height, " ");//the grid that will be displayed. blank for now
+        drawLevel(level, display);//we have to pass in level instead of roomdata.grid becuase roomdata.grid doesn't know the location of the entities
+        
+        outputtext.classList.add("dungeon");//styling welcome text
     });
 }
 
@@ -50,20 +53,25 @@ function boundedrandom(min, max) {
     return uniformrandom(max - min) + min;
 }
 
-// i moved it here. the above code won't run in test.html because there is no submitbutton. i'd ask that all the actual code for the site goes HERE in this one js file and not scattered between many JS files. just personal preference
+function drawLevel(level, display) {
+    for (let y = 0; y < level.map.height; y++) {
+        for (let x = 0; x < level.map.width; x++) {
+            display.set(x, y, level.map.get(x, y));//for all the tiles in the grid, add them to the display
+        }
+    }
+
+    for (const child of level.children) {
+        const symbol = child.symbol || "?";//gets symbol from child class (set to @ for player below) or '?' if there is no symbol
+        display.set(child.x, child.y, symbol);//sets it onto the grid that is to be displayed
+    }
+
+    const gamegridtext = document.getElementById('gamegridtext');
+    if (gamegridtext) {
+        gamegridtext.textContent = display.toString();//draw to screen
+    }
+}
+
 class Grid {
-    // TODO: Fill this in so that the tests pass.
-
-    // A grid is a rectangular array where the top left corner is (0, 0) and the bottom right
-    // corner is (width-1, height-1). For example, a width 4 height 2 grid with contents:
-    //
-    // ABCD
-    // EFGH
-    //
-    // A is at (0, 0), H is at (3, 1)
-    //
-    // TODO: write a test that verifies the information in this example.
-
     constructor(width, height, val) {
         // if there's negative values in width or height
         if (width < 0 || height < 0) {
@@ -219,6 +227,9 @@ class Player extends Entity {
         this.name = "";
         this.x = 0;
         this.y = 0;
+    }
+    get symbol() {
+        return "@";
     }
     set parent(newparent) {
         if (newparent !== null && !(newparent instanceof Level)) {
