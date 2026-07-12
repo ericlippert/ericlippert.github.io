@@ -1,6 +1,10 @@
 "use strict";
 window.onerror = alert;
 
+let theCurrentLevel = null;
+let theCurrentPlayer = null;
+let theCurrentDisplay = null;
+
 const submitbutton = document.getElementById('submitbutton');
 if (submitbutton) {
     const inputbox = document.getElementById('inputbox');
@@ -21,21 +25,21 @@ if (submitbutton) {
         const roomdata = createtherooms();//instead of just running the function that creates the room, sitll dothat, but save the data (grid and rooms)
         
         const dungeon = new Dungeon();
-        const level = new Level(roomdata.grid);
-        level.parent = dungeon;
+        theCurrentLevel = new Level(roomdata.grid);
+        theCurrentLevel.parent = dungeon;
 
-        const player = new Player();
-        player.name = storedData;
-        player.parent = level;
+        theCurrentPlayer = new Player();
+        theCurrentPlayer.name = storedData;
+        theCurrentPlayer.parent = theCurrentLevel;
         
         const startroom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];//random start room now using new random ufnction
-        player.x = Math.floor(startroom.left + startroom.width / 2);//player (invisible as of writing) in middle of room
-        player.y = Math.floor(startroom.top + startroom.height / 2);
+        theCurrentPlayer.x = Math.floor(startroom.left + startroom.width / 2);//player (invisible as of writing) in middle of room
+        theCurrentPlayer.y = Math.floor(startroom.top + startroom.height / 2);
         
         console.log("made ", dungeon);//added earlier because the code wasn't working before
         
-        const display = new Grid(level.map.width, level.map.height, " ");//the grid that will be displayed. blank for now
-        drawLevel(level, display);//we have to pass in level instead of roomdata.grid becuase roomdata.grid doesn't know the location of the entities
+        theCurrentDisplay = new Grid(theCurrentLevel.map.width, theCurrentLevel.map.height, " ");//the grid that will be displayed. blank for now
+        drawLevel(theCurrentLevel, theCurrentDisplay);//we have to pass in level instead of roomdata.grid becuase roomdata.grid doesn't know the location of the entities
         
         outputtext.classList.add("dungeon");//styling welcome text
     });
@@ -568,6 +572,57 @@ function createtherooms() {
     } // end of the 100 tries loop
     throw new Error("didn't work");
 } // end createtherooms
+
+class Action {
+    constructor() {}
+}
+
+class moveAction extends Action {
+    constructor(dx, dy) {//d for delta
+        super();
+        this.dx = dx; // -1, 0, or 1 for movement on both axis
+        this.dy = dy;
+    }
+}
+
+function canDoAction(action) {
+    if (!theCurrentPlayer || !theCurrentLevel) return;
+
+    if (action instanceof moveAction) {
+        const newX = theCurrentPlayer.x + action.dx;
+        const newY = theCurrentPlayer.y + action.dy;
+
+        if (newX >= 0 && newX < theCurrentLevel.map.width && newY >= 0 && newY < theCurrentLevel.map.height) {//make sure it's actually in the map
+            //only move if the tile is space " "
+            if (theCurrentLevel.map.get(newX, newY) === " ") {//only move to blank space
+                theCurrentPlayer.x = newX;
+                theCurrentPlayer.y = newY;
+                drawLevel(theCurrentLevel, theCurrentDisplay);//draw the grid with updated position
+            }
+        }
+    }
+}
+
+window.addEventListener("keydown", (event) => {
+    if (!theCurrentPlayer || !theCurrentLevel) return;//so the user can still use wasd for their name before the gane loads
+
+    let action = null; //instead of "let action;" to line if (action !== null) doesn't always run
+
+    if (event.key === "w" || event.key === "W") {//wasd for movement instead of arrow keys for universal controls with other games + natural hand placement + some keyboard don't have arrow keys
+        action = new moveAction(0, -1);//creating a new temporary movement object for movement
+    } else if (event.key === "s" || event.key === "S") {
+        action = new moveAction(0, 1);
+    } else if (event.key === "a" || event.key === "A") {
+        action = new moveAction(-1, 0);
+    } else if (event.key === "d" || event.key === "D") {
+        action = new moveAction(1, 0);
+    }
+
+    if (action !== null) {
+        event.preventDefault();
+        canDoAction(action);//send in the movement object to the canDoAction function that makes sure we're allowed to
+    }
+});
 
 
 
