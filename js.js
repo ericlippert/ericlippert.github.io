@@ -36,12 +36,29 @@ if (submitbutton) {
         theCurrentPlayer.x = Math.floor(startroom.left + startroom.width / 2);//player (invisible as of writing) in middle of room
         theCurrentPlayer.y = Math.floor(startroom.top + startroom.height / 2);
         
+        const upStairway = new UpStairway();
+        upStairway.x = theCurrentPlayer.x;
+        upStairway.y = theCurrentPlayer.y;
+        upStairway.parent = theCurrentLevel;
+
+        const amuletRoom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];
+        const amuletX = boundedrandom(amuletRoom.left + 1, amuletRoom.right - 2);
+        const amuletY = boundedrandom(amuletRoom.top + 1, amuletRoom.bottom - 2);
+
+        const amulet = new Amulet();
+        amulet.x = amuletX;
+        amulet.y = amuletY;
+        amulet.parent = theCurrentLevel;
+
+        console.log("Player spawned at:", theCurrentPlayer.x, theCurrentPlayer.y);
+        console.log("Amulet spawned at:", amuletX, amuletY);
         console.log("made ", dungeon);//added earlier because the code wasn't working before
         
         theCurrentDisplay = new Grid(theCurrentLevel.map.width, theCurrentLevel.map.height, " ");//the grid that will be displayed. blank for now
         drawLevel(theCurrentLevel, theCurrentDisplay);//we have to pass in level instead of roomdata.grid becuase roomdata.grid doesn't know the location of the entities
         
         outputtext.classList.add("dungeon");//styling welcome text
+        window.focus(); // Release focus from inputs so keyboard controls work instantly
     });
 }
 
@@ -64,7 +81,13 @@ function drawLevel(level, display) {
         }
     }
 
-    for (const child of level.children) {
+    const sortedChildren = level.children.sort((a, b) => {//switched to new priority system which determines what should be displayed if multiple characters overlap
+        const priorityA = a.renderPriority || 0;//0 if not defined for whatever reason. here we're telling the sorting algorithm what to sort all the entities by
+        const priorityB = b.renderPriority || 0;
+        return priorityA - priorityB;//return lowest first in entities list
+    });
+
+    for (const child of sortedChildren) {//loop through all the children and display them in order (highest priority is last as they get written last to display, meaning they'll nbe actually displayed)
         const symbol = child.symbol || "?";//gets symbol from child class (set to @ for player below) or '?' if there is no symbol
         display.set(child.x, child.y, symbol);//sets it onto the grid that is to be displayed
     }
@@ -161,6 +184,14 @@ class Entity {
         this._children = [];
     }
 
+    get renderPriority() {
+        return 0;//lowest priority by default so if anything has a (higher) priority set, it'll be displayed over this (such as player)
+    }
+
+    get isPortable() {
+        return false;//can't take it by defualt
+    }
+
     get parent() {
         return this._parent; //using a private variable so that there's no infinite loop 
     }
@@ -204,6 +235,9 @@ class Dungeon extends Entity { //extends means it's a modified version of the en
     constructor() {
         super();
     }
+    get parent() {
+        return super.parent;  //the amulet picking up/leaving doesn't work without this (including in the other entity classes)
+    }
     set parent(newparent) {
         if (newparent !== null) {
             throw new Error("the parent of a dungeon entity must always be null.");
@@ -216,6 +250,9 @@ class Level extends Entity {
     constructor(mapgrid) {
         super();
         this.map = mapgrid;
+    }
+    get parent() {
+        return super.parent;
     }
     set parent(newparent) {
         if (newparent !== null && !(newparent instanceof Dungeon)) {
@@ -235,9 +272,54 @@ class Player extends Entity {
     get symbol() {
         return "@";
     }
+    get renderPriority() {
+        return 999999;//basically always displayed
+    }
+    get parent() {
+        return super.parent;
+    }
     set parent(newparent) {
         if (newparent !== null && !(newparent instanceof Level)) {
             throw new Error("the parent of a player must be a level.");
+        }
+        super.parent = newparent;
+    }
+}
+
+class UpStairway extends Entity {
+    get symbol() {
+        return "<";//stair
+    }
+    get renderPriority() {
+        return 10;//less than player
+    }
+    get parent() {
+        return super.parent;
+    }
+    set parent(newparent) {
+        if (newparent !== null && !(newparent instanceof Level)) {
+            throw new Error("must be a level");
+        }
+        super.parent = newparent;
+    }
+}
+
+class Amulet extends Entity {
+    get symbol() {
+        return '"';//i don't see how this is an amulet but ok
+    }
+    get renderPriority() {
+        return 20;//less than player but more than stairs
+    }
+    get isPortable() {
+        return true;//can pick it up
+    }
+    get parent() {
+        return super.parent;
+    }
+    set parent(newparent) {
+        if (newparent !== null && !(newparent instanceof Level) && !(newparent instanceof Player)) {
+            throw new Error("must be a level or a player");
         }
         super.parent = newparent;
     }
@@ -585,6 +667,18 @@ class moveAction extends Action {
     }
 }
 
+class pickupAction extends Action {
+    constructor() {
+        super();
+    }
+}
+
+class climbStairsAction extends Action {
+    constructor() {
+        super();
+    }
+}
+
 function canDoAction(action) {
     if (!theCurrentPlayer || !theCurrentLevel) return;
 
@@ -600,12 +694,78 @@ function canDoAction(action) {
                 drawLevel(theCurrentLevel, theCurrentDisplay);//draw the grid with updated position
             }
         }
+    } 
+    else if (action instanceof pickupAction) 
+    {
+        const level = theCurrentPlayer.parent;
+        if (level instanceof Level) //make sure valid level object
+        {
+            const itemsToPickUp = level.children.filter(child =>//list of items that can be picked up
+                child !== theCurrentPlayer &&//can;t be player
+                child.x === theCurrentPlayer.x &&//must be same x and y
+                child.y === theCurrentPlayer.y &&//
+                child.isPortable//has to be able to be picked up
+            );
+
+
+            for (const item of itemsToPickUp) 
+            {
+                item.parent = theCurrentPlayer;//become under the player instead of the level
+            }
+
+            if (itemsToPickUp.length > 0) //if anything was picked up
+            {
+                drawLevel(theCurrentLevel, theCurrentDisplay);
+                const itemNames = itemsToPickUp.map(item => item.constructor.name).join(", ");
+                const output = document.getElementById('outputtext');
+                if (output) 
+                {
+                    output.textContent = `You picked up: ${itemNames}`;
+                }
+            }
+        }
+    } 
+    else if (action instanceof climbStairsAction) //if climbing the stairs
+    {
+        const level = theCurrentPlayer.parent;
+        if (level instanceof Level) //make sure valid level object
+        {
+            const stairway = level.children.find(child =>//look for stairway at the same position
+                child instanceof UpStairway &&
+                child.x === theCurrentPlayer.x &&
+                child.y === theCurrentPlayer.y
+            );
+
+
+            if (stairway) //if there's a stairway at the same position
+            {
+                const hasAmulet = theCurrentPlayer.children.some(child => child instanceof Amulet);//check if the amulet is a child of the player
+                const output = document.getElementById('outputtext');
+
+                if (hasAmulet) 
+                {
+                    if (output) 
+                    {
+                        output.textContent = "You escaped with the Amulet! You Win!";
+                    }
+                } 
+                else 
+                {
+                    if (output) 
+                    {
+                        output.textContent = "You escaped without the Amulet! You Lose!";
+                    }
+                }
+
+                theCurrentPlayer = null;
+                theCurrentLevel = null;
+            }
+        }
     }
 }
 
 window.addEventListener("keydown", (event) => {
     if (!theCurrentPlayer || !theCurrentLevel) return;//so the user can still use wasd for their name before the gane loads
-
     let action = null; //instead of "let action;" to line if (action !== null) doesn't always run
 
     if (event.key === "w" || event.key === "W") {//wasd for movement instead of arrow keys for universal controls with other games + natural hand placement + some keyboard don't have arrow keys
@@ -616,6 +776,10 @@ window.addEventListener("keydown", (event) => {
         action = new moveAction(-1, 0);
     } else if (event.key === "d" || event.key === "D") {
         action = new moveAction(1, 0);
+    } else if (event.key === ",") {
+        action = new pickupAction();
+    } else if (event.key === "<") {
+        action = new climbStairsAction();
     }
 
     if (action !== null) {
