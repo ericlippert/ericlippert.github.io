@@ -50,6 +50,27 @@ if (submitbutton) {
         amulet.y = amuletY;
         amulet.parent = theCurrentLevel;
 
+        // adding 3-7 hilichurls to random rooms
+        const numHilichurls = boundedrandom(3, 7);
+        for (let i = 0; i < numHilichurls; i++) {//loop through number of hilichurls to add
+            for (let attempt = 0; attempt < 20; attempt++) {//20 attempts before giving up for each hilichurl
+                const hilichurlRoom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];//getting a random room to place the hilichurl in
+                const hx = boundedrandom(hilichurlRoom.left + 1, hilichurlRoom.right - 2);//random x in room
+                const hy = boundedrandom(hilichurlRoom.top + 1, hilichurlRoom.bottom - 2);//random y in room
+
+                const occupied = (theCurrentPlayer.x === hx && theCurrentPlayer.y === hy) ||
+                theCurrentLevel.children.some(child => child.x === hx && child.y === hy);//arrow callback function checking if player is there or any other entities are there
+
+                if (!occupied) {//if the position is not occupied
+                    const theHilichurl = new hilichurl();//create the hilichurl
+                    theHilichurl.x = hx;
+                    theHilichurl.y = hy;
+                    theHilichurl.parent = theCurrentLevel;
+                    break;
+                }
+            }
+        }
+
         console.log("Player spawned at:", theCurrentPlayer.x, theCurrentPlayer.y);
         console.log("Amulet spawned at:", amuletX, amuletY);
         console.log("made ", dungeon);//added earlier because the code wasn't working before
@@ -73,6 +94,7 @@ function uniformrandom(max) {
 function boundedrandom(min, max) {
     return uniformrandom(max - min) + min;
 }
+
 
 function drawLevel(level, display) {
     for (let y = 0; y < level.map.height; y++) {
@@ -324,6 +346,39 @@ class Amulet extends Entity {
         super.parent = newparent;
     }
 }
+
+
+class badGuy extends Entity {
+    constructor() {
+        super();
+        if (new.target === badGuy) {
+            throw new Error("you can't make a bad guy class on it's own since it's abstract");
+        }
+        this.x = 0;
+        this.y = 0;
+    }
+    
+    get parent() {
+        return super.parent;
+    }
+    
+    set parent(newparent) {
+        if (newparent !== null && !(newparent instanceof Level)) {
+            throw new Error("parent of a bad guy must be a level");
+        }
+        super.parent = newparent;
+    }
+}
+class hilichurl extends badGuy {
+    get symbol() {
+        return "H"; // Representation on the grid
+    }
+    
+    get renderPriority() {
+        return 100; // Render below player (999999) but above stairs (10)
+    }
+}
+
 
 class rectroom {
     constructor(left, top, width, height) {
@@ -656,66 +711,59 @@ function createtherooms() {
 } // end createtherooms
 
 class Action {
-    constructor() {}
+    constructor(doer) {
+        this.doer = doer;
+    }
+    execute() {//no more doAction function at all; there's an execute in each action class that has the thing to move passed into it
+        throw new Error("you actually have to execute a single action.");
+    }
 }
 
 class moveAction extends Action {
-    constructor(dx, dy) {//d for delta
-        super();
+    constructor(doer, dx, dy) {//d for delta
+        super(doer);
         this.dx = dx; // -1, 0, or 1 for movement on both axis
         this.dy = dy;
+    }
+    execute() {
+        const level = this.doer.parent;
+        if (!(level instanceof Level)) return;//failsafe
+
+        const newX = this.doer.x + this.dx;
+        const newY = this.doer.y + this.dy;
+
+        if (isWalkable(level, newX, newY)) {
+            this.doer.x = newX;
+            this.doer.y = newY;
+            drawLevel(level, theCurrentDisplay);//draw the grid with updated position
+        }
     }
 }
 
 class pickupAction extends Action {
-    constructor() {
-        super();
+    constructor(doer) {
+        super(doer);
     }
-}
-
-class climbStairsAction extends Action {
-    constructor() {
-        super();
-    }
-}
-
-function canDoAction(action) {
-    if (!theCurrentPlayer || !theCurrentLevel) return;
-
-    if (action instanceof moveAction) {
-        const newX = theCurrentPlayer.x + action.dx;
-        const newY = theCurrentPlayer.y + action.dy;
-
-        if (newX >= 0 && newX < theCurrentLevel.map.width && newY >= 0 && newY < theCurrentLevel.map.height) {//make sure it's actually in the map
-            //only move if the tile is space " "
-            if (theCurrentLevel.map.get(newX, newY) === " ") {//only move to blank space
-                theCurrentPlayer.x = newX;
-                theCurrentPlayer.y = newY;
-                drawLevel(theCurrentLevel, theCurrentDisplay);//draw the grid with updated position
-            }
-        }
-    } 
-    else if (action instanceof pickupAction) 
-    {
-        const level = theCurrentPlayer.parent;
+    execute() {
+        const level = this.doer.parent;
         if (level instanceof Level) //make sure valid level object
         {
             const itemsToPickUp = level.children.filter(child =>//list of items that can be picked up
-                child !== theCurrentPlayer &&//can;t be player
-                child.x === theCurrentPlayer.x &&//must be same x and y
-                child.y === theCurrentPlayer.y &&//
+                child !== this.doer &&//can;t be player
+                child.x === this.doer.x &&//must be same x and y
+                child.y === this.doer.y &&//
                 child.isPortable//has to be able to be picked up
             );
 
 
             for (const item of itemsToPickUp) 
             {
-                item.parent = theCurrentPlayer;//become under the player instead of the level
+                item.parent = this.doer;//become under the player instead of the level
             }
 
             if (itemsToPickUp.length > 0) //if anything was picked up
             {
-                drawLevel(theCurrentLevel, theCurrentDisplay);
+                drawLevel(level, theCurrentDisplay);
                 const itemNames = itemsToPickUp.map(item => item.constructor.name).join(", ");
                 const output = document.getElementById('outputtext');
                 if (output) 
@@ -724,22 +772,27 @@ function canDoAction(action) {
                 }
             }
         }
-    } 
-    else if (action instanceof climbStairsAction) //if climbing the stairs
-    {
-        const level = theCurrentPlayer.parent;
+    }
+}
+
+class climbStairsAction extends Action {
+    constructor(doer) {
+        super(doer);
+    }
+    execute() {
+        const level = this.doer.parent;
         if (level instanceof Level) //make sure valid level object
         {
             const stairway = level.children.find(child =>//look for stairway at the same position
                 child instanceof UpStairway &&
-                child.x === theCurrentPlayer.x &&
-                child.y === theCurrentPlayer.y
+                child.x === this.doer.x &&
+                child.y === this.doer.y
             );
 
 
             if (stairway) //if there's a stairway at the same position
             {
-                const hasAmulet = theCurrentPlayer.children.some(child => child instanceof Amulet);//check if the amulet is a child of the player
+                const hasAmulet = this.doer.children.some(child => child instanceof Amulet);//check if the amulet is a child of the player
                 const output = document.getElementById('outputtext');
 
                 if (hasAmulet) 
@@ -757,11 +810,28 @@ function canDoAction(action) {
                     }
                 }
 
-                theCurrentPlayer = null;
-                theCurrentLevel = null;
+                if (this.doer === theCurrentPlayer) {
+                    theCurrentPlayer = null;
+                    theCurrentLevel = null;
+                }
             }
         }
     }
+}
+
+function isWalkable(level, x, y) {
+    if (x < 0 || x >= level.map.width || y < 0 || y >= level.map.height) {
+        return false;
+    }
+    if (level.map.get(x, y) !== " ") {
+        return false;
+    }
+    const occupied = level.children.some(child => //can't move there if there's some entity in the way
+        (child instanceof Player || child instanceof badGuy) &&
+        child.x === x &&
+        child.y === y
+    );
+    return !occupied;//if occupied is false, isWalkable is true (& vice versa)
 }
 
 window.addEventListener("keydown", (event) => {
@@ -769,22 +839,36 @@ window.addEventListener("keydown", (event) => {
     let action = null; //instead of "let action;" to line if (action !== null) doesn't always run
 
     if (event.key === "w" || event.key === "W") {//wasd for movement instead of arrow keys for universal controls with other games + natural hand placement + some keyboard don't have arrow keys
-        action = new moveAction(0, -1);//creating a new temporary movement object for movement
+        action = new moveAction(theCurrentPlayer, 0, -1);//now defining which specific thing gets moved instead of hardcoded to player
     } else if (event.key === "s" || event.key === "S") {
-        action = new moveAction(0, 1);
+        action = new moveAction(theCurrentPlayer, 0, 1);
     } else if (event.key === "a" || event.key === "A") {
-        action = new moveAction(-1, 0);
+        action = new moveAction(theCurrentPlayer, -1, 0);
     } else if (event.key === "d" || event.key === "D") {
-        action = new moveAction(1, 0);
+        action = new moveAction(theCurrentPlayer, 1, 0);
     } else if (event.key === ",") {
-        action = new pickupAction();
+        action = new pickupAction(theCurrentPlayer);
     } else if (event.key === "<") {
-        action = new climbStairsAction();
+        action = new climbStairsAction(theCurrentPlayer);
     }
 
     if (action !== null) {
         event.preventDefault();
-        canDoAction(action);//send in the movement object to the canDoAction function that makes sure we're allowed to
+        action.execute();//send in the movement code
+
+        // monsters' turn.
+        if (theCurrentLevel && theCurrentPlayer) {//failsafe
+            const badGuys = theCurrentLevel.children.filter(child => child instanceof badGuy);//get list array of all hilichurls
+            for (const monster of badGuys) {//for each hilichurl
+                // Generate a random step (-1, 0, or 1 in both dimensions)
+                const dx = uniformrandom(2) - 1;
+                const dy = uniformrandom(2) - 1;
+                if (dx !== 0 || dy !== 0) {//if the monster didn't stay in the same spot
+                    const monsterMove = new moveAction(monster, dx, dy);//now we can create a move action for not the player as well
+                    monsterMove.execute();
+                }
+            }
+        }
     }
 });
 
