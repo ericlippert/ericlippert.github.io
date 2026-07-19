@@ -417,23 +417,17 @@ class rectroom {
 
 
 
-
-
-
-
-
-
 //nested functions removed and some take in the gamegrid too now (some don't because they just check coordinnates and don't need access to the board itself)
 function canconnectvertical(roomA, roomB) {
-    const sharedLeft = Math.max(roomA.left, roomB.left);
-    const sharedRight = Math.min(roomA.right, roomB.right);
-    return sharedLeft < sharedRight;
+    const maxLeft = Math.max(roomA.left + 1, roomB.left + 1);
+    const minRight = Math.min(roomA.right - 2, roomB.right - 2);
+    return maxLeft <= minRight;
 }
 
 function canconnecthorizontal(roomA, roomB) {
-    const sharedTop = Math.max(roomA.top, roomB.top);
-    const sharedBottom = Math.min(roomA.bottom, roomB.bottom);
-    return sharedTop < sharedBottom;
+    const maxTop = Math.max(roomA.top + 1, roomB.top + 1);
+    const minBottom = Math.min(roomA.bottom - 2, roomB.bottom - 2);
+    return maxTop <= minBottom;
 }
 
 function tunnelcollides(gamegrid, x1, y1, x2, y2) {
@@ -461,9 +455,10 @@ function tunnelcollides(gamegrid, x1, y1, x2, y2) {
 }
 
 function digverticaltunnel(gamegrid, roomA, roomB) {
-    const sharedleft = Math.max(roomA.left, roomB.left);
-    const sharedright = Math.min(roomA.right, roomB.right);
-    const tunnelX = Math.floor((sharedleft + sharedright) / 2);
+    const maxLeft = Math.max(roomA.left + 1, roomB.left + 1);
+    const minRight = Math.min(roomA.right - 2, roomB.right - 2);
+    if (maxLeft > minRight) return false;
+    const tunnelX = Math.floor((maxLeft + minRight) / 2);
 
     const toproom = roomA.top < roomB.top ? roomA : roomB;
     const bottomroom = roomA.top < roomB.top ? roomB : roomA;
@@ -482,9 +477,10 @@ function digverticaltunnel(gamegrid, roomA, roomB) {
 }
 
 function dighorizontaltunnel(gamegrid, roomA, roomB) {
-    const sharedTop = Math.max(roomA.top, roomB.top);
-    const sharedBottom = Math.min(roomA.bottom, roomB.bottom);
-    const tunnelY = Math.floor((sharedTop + sharedBottom) / 2); //so there can only be one tunnel between rooms (same thuing for vertical)
+    const maxTop = Math.max(roomA.top + 1, roomB.top + 1);
+    const minBottom = Math.min(roomA.bottom - 2, roomB.bottom - 2);
+    if (maxTop > minBottom) return false;
+    const tunnelY = Math.floor((maxTop + minBottom) / 2); //so there can only be one tunnel between rooms (same thuing for vertical)
 
     // find out which room is to the left and which is to the right
     const leftRoom = roomA.left < roomB.left ? roomA : roomB;
