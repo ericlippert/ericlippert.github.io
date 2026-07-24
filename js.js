@@ -4,6 +4,21 @@ window.onerror = alert;
 let theCurrentLevel = null;
 let theCurrentPlayer = null;
 let theCurrentDisplay = null;
+let isDropping = false;
+
+const messageLog = [];//the output box should log messages (20 i've decided) instead of just showing one
+function logMessage(message) {
+    messageLog.push(message);//adds the message to the end of the array
+    if (messageLog.length > 20) {
+        messageLog.shift(); // deletes the 21st oldest message, keeping 20
+    }
+    const output = document.getElementById('outputtext');
+    if (output)//failsafe
+    {
+        output.innerText = messageLog.join("\n");//new line character beetween each line
+        output.scrollTop = output.scrollHeight; // Auto-scroll to the bottom
+    }
+}
 
 const submitbutton = document.getElementById('submitbutton');
 if (submitbutton) {
@@ -12,7 +27,6 @@ if (submitbutton) {
     const enteryourname = document.getElementById('enteryourname');
     const gamegridtext = document.getElementById('gamegridtext');
 
-    // let instead of var but let me know if var is better for this -jj
     let storedData = "";
 
     submitbutton.addEventListener('click', () => {
@@ -20,8 +34,13 @@ if (submitbutton) {
         inputbox.style.display = 'none';
         enteryourname.style.display = 'none';
         submitbutton.style.display = 'none';
+        
+        const gameContainer = document.getElementById('game-container');
+        if (gameContainer) {
+            gameContainer.style.display = 'flex';//so it doesn't awkwardly display before the game starts
+        }
         console.log(storedData);
-        outputtext.textContent = "hello " + storedData + ", welcome to the dungeon.";
+        logMessage("hello " + storedData + ", welcome to the dungeon.");//using new log function instead
         const roomdata = createtherooms();//instead of just running the function that creates the room, sitll dothat, but save the data (grid and rooms)
         
         const dungeon = new Dungeon();
@@ -41,14 +60,36 @@ if (submitbutton) {
         upStairway.y = theCurrentPlayer.y;
         upStairway.parent = theCurrentLevel;
 
-        const amuletRoom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];
-        const amuletX = boundedrandom(amuletRoom.left + 1, amuletRoom.right - 2);
-        const amuletY = boundedrandom(amuletRoom.top + 1, amuletRoom.bottom - 2);
+        const crownRoom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];
+        const crownX = boundedrandom(crownRoom.left + 1, crownRoom.right - 2);
+        const crownY = boundedrandom(crownRoom.top + 1, crownRoom.bottom - 2);
 
-        const amulet = new Amulet();
-        amulet.x = amuletX;
-        amulet.y = amuletY;
-        amulet.parent = theCurrentLevel;
+        const crown = new Crown();
+        crown.x = crownX;
+        crown.y = crownY;
+        crown.parent = theCurrentLevel;
+
+        //spawning random items on the level
+        const itemClasses = [Coffee, Sword, Lyre, Potion, Sword];//list of all the items
+        const numItems = boundedrandom(5, 10);
+        for (let i = 0; i < numItems; i++) {//for the randomly chosen amount of items
+            for (let attempt = 0; attempt < 20; attempt++) {//20 attempts
+                const itemRoom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];//random room
+                const ix = boundedrandom(itemRoom.left + 1, itemRoom.right - 2);//random x in room
+                const iy = boundedrandom(itemRoom.top + 1, itemRoom.bottom - 2);//random y in room
+
+                const occupied = (theCurrentPlayer.x === ix && theCurrentPlayer.y === iy) || theCurrentLevel.children.some(child => child.x === ix && child.y === iy);//check if there's an entity there already
+
+                if (!occupied) {//if not occupied 
+                    const itemClass = itemClasses[uniformrandom(itemClasses.length - 1)];//random item with the name itemClass
+                    const item = new itemClass();//create the item
+                    item.x = ix;//set location
+                    item.y = iy;
+                    item.parent = theCurrentLevel;
+                    break;
+                }
+            }
+        }
 
         // adding 3-7 hilichurls to random rooms
         const numHilichurls = boundedrandom(3, 7);
@@ -66,13 +107,20 @@ if (submitbutton) {
                     theHilichurl.x = hx;
                     theHilichurl.y = hy;
                     theHilichurl.parent = theCurrentLevel;
+
+                    // 30% chance for this hilichurl to get a random item
+                    if (uniformrandom(9) < 3) {
+                        const itemClass = itemClasses[uniformrandom(itemClasses.length - 1)];
+                        const carriedItem = new itemClass();
+                        carriedItem.parent = theHilichurl;
+                    }
                     break;
                 }
             }
         }
 
         console.log("Player spawned at:", theCurrentPlayer.x, theCurrentPlayer.y);
-        console.log("Amulet spawned at:", amuletX, amuletY);
+        console.log("Crown spawned at:", crownX, crownY);
         console.log("made ", dungeon);//added earlier because the code wasn't working before
         
         theCurrentDisplay = new Grid(theCurrentLevel.map.width, theCurrentLevel.map.height, " ");//the grid that will be displayed. blank for now
@@ -258,7 +306,7 @@ class Dungeon extends Entity { //extends means it's a modified version of the en
         super();
     }
     get parent() {
-        return super.parent;  //the amulet picking up/leaving doesn't work without this (including in the other entity classes)
+        return super.parent;  //the crown picking up/leaving doesn't work without this (including in the other entity classes)
     }
     set parent(newparent) {
         if (newparent !== null) {
@@ -326,27 +374,77 @@ class UpStairway extends Entity {
     }
 }
 
-class Amulet extends Entity {
-    get symbol() {
-        return '"';//i don't see how this is an amulet but ok
-    }
-    get renderPriority() {
-        return 20;//less than player but more than stairs
-    }
+class Item extends Entity{
     get isPortable() {
-        return true;//can pick it up
+        return true;
     }
+    
     get parent() {
         return super.parent;
     }
+    
     set parent(newparent) {
-        if (newparent !== null && !(newparent instanceof Level) && !(newparent instanceof Player)) {
-            throw new Error("must be a level or a player");
+        if (newparent !== null && !(newparent instanceof Level) && !(newparent instanceof Player) && !(newparent instanceof badGuy))//evaluates to false overall if the parent isn't a level, badguy, or player
+        {
+            throw new Error("Parent of an item must be a level, a player, or a monster.");
         }
         super.parent = newparent;
     }
 }
 
+class Crown extends Item {
+    get symbol() {
+        return '♕';//crown now and i'm using the chess piece
+    }
+    get renderPriority() {
+        return 20;//less than player but more than stairs
+    }
+}
+
+class Sword extends Item {
+    get symbol() {
+        return '⚔';//it might render as an emoji in IDE but in firefox it's a regular unicode character which doesn't push the row to the right (since emojis are too wide)
+    }
+    get renderPriority() {
+        return 20;//less than player but more than stairs
+    }
+}
+
+class Coffee extends Item {
+    get symbol() {
+        return '☕︎';
+    }
+    get renderPriority() {
+        return 20;
+    }
+}
+
+class Potion extends Item {
+    get symbol() {
+        return '⚗';
+    }
+    get renderPriority() {
+        return 20;
+    }
+}
+
+class Cloak extends Item {
+    get symbol() {
+        return '𓀠';
+    }
+    get renderPriority() {
+        return 20;
+    }
+}
+
+class Lyre extends Item {
+    get symbol() {
+        return '♪';
+    }
+    get renderPriority() {
+        return 20;
+    }
+}
 
 class badGuy extends Entity {
     constructor() {
@@ -367,6 +465,10 @@ class badGuy extends Entity {
             throw new Error("parent of a bad guy must be a level");
         }
         super.parent = newparent;
+    }
+
+    canPickUp(item) {
+        return true;
     }
 }
 class hilichurl extends badGuy {
@@ -420,14 +522,14 @@ class rectroom {
 //nested functions removed and some take in the gamegrid too now (some don't because they just check coordinnates and don't need access to the board itself)
 function canconnectvertical(roomA, roomB) {
     const maxLeft = Math.max(roomA.left + 1, roomB.left + 1);
-    const minRight = Math.min(roomA.right - 2, roomB.right - 2);
-    return maxLeft <= minRight;
+    const minRight = Math.min(roomA.right - 1, roomB.right - 1);
+    return maxLeft < minRight;
 }
 
 function canconnecthorizontal(roomA, roomB) {
     const maxTop = Math.max(roomA.top + 1, roomB.top + 1);
-    const minBottom = Math.min(roomA.bottom - 2, roomB.bottom - 2);
-    return maxTop <= minBottom;
+    const minBottom = Math.min(roomA.bottom - 1, roomB.bottom - 1);
+    return maxTop < minBottom;
 }
 
 function tunnelcollides(gamegrid, x1, y1, x2, y2) {
@@ -456,8 +558,8 @@ function tunnelcollides(gamegrid, x1, y1, x2, y2) {
 
 function digverticaltunnel(gamegrid, roomA, roomB) {
     const maxLeft = Math.max(roomA.left + 1, roomB.left + 1);
-    const minRight = Math.min(roomA.right - 2, roomB.right - 2);
-    if (maxLeft > minRight) return false;
+    const minRight = Math.min(roomA.right - 1, roomB.right - 1);
+    if (maxLeft >= minRight) return false;
     const tunnelX = Math.floor((maxLeft + minRight) / 2);
 
     const toproom = roomA.top < roomB.top ? roomA : roomB;
@@ -478,8 +580,8 @@ function digverticaltunnel(gamegrid, roomA, roomB) {
 
 function dighorizontaltunnel(gamegrid, roomA, roomB) {
     const maxTop = Math.max(roomA.top + 1, roomB.top + 1);
-    const minBottom = Math.min(roomA.bottom - 2, roomB.bottom - 2);
-    if (maxTop > minBottom) return false;
+    const minBottom = Math.min(roomA.bottom - 1, roomB.bottom - 1);
+    if (maxTop >= minBottom) return false;
     const tunnelY = Math.floor((maxTop + minBottom) / 2); //so there can only be one tunnel between rooms (same thuing for vertical)
 
     // find out which room is to the left and which is to the right
@@ -761,10 +863,9 @@ class pickupAction extends Action {
             {
                 drawLevel(level, theCurrentDisplay);
                 const itemNames = itemsToPickUp.map(item => item.constructor.name).join(", ");
-                const output = document.getElementById('outputtext');
-                if (output) 
-                {
-                    output.textContent = `You picked up: ${itemNames}`;
+                logMessage("you picked up: " + itemNames);
+                if (this.doer === theCurrentPlayer) {
+                    new listInventoryAction(this.doer).execute();//automatically list the inventory when picking up an item
                 }
             }
         }
@@ -788,28 +889,61 @@ class climbStairsAction extends Action {
 
             if (stairway) //if there's a stairway at the same position
             {
-                const hasAmulet = this.doer.children.some(child => child instanceof Amulet);//check if the amulet is a child of the player
-                const output = document.getElementById('outputtext');
-
-                if (hasAmulet) 
+                const hasCrown = this.doer.children.some(child => child instanceof Crown);//check if the crown is a child of the player
+                if (hasCrown) 
                 {
-                    if (output) 
-                    {
-                        output.textContent = "You escaped with the Amulet! You Win!";
-                    }
+                    logMessage("you escaped with the Crown! You Win!");
                 } 
                 else 
                 {
-                    if (output) 
-                    {
-                        output.textContent = "You escaped without the Amulet! You Lose!";
-                    }
+                    logMessage("you escaped without the Crown! You Lose!");
                 }
 
                 if (this.doer === theCurrentPlayer) {
                     theCurrentPlayer = null;
                     theCurrentLevel = null;
                 }
+            }
+        }
+    }
+}
+
+class listInventoryAction extends Action {
+    execute() {
+        const div = document.getElementById("inventory-list");//the new html div for the list
+        if (!div) return;//failsafe
+        const children = this.doer.children;//gets the items that are children of the player (this.doer)
+        if (children.length === 0) //if no items
+        {
+            div.innerText = "You are empty-handed.";
+        } 
+        else //if has items
+        {
+            div.innerText = children.map((item, idx) => //.map loops through all the elements in the array "children" which is going to be passed in as the array of the children of the player
+                (idx + 1) + ". " + item.constructor.name.toLowerCase()// "(idx + 1) + ". " + " lists them as like "1. 2. 3."
+            ).join("\n");//makes a new line for each item
+        }
+    }
+}
+
+class dropAction extends Action {
+    constructor(doer, item)//getting the entity dropping the item and which item to have dropped respectively
+    {
+        super(doer);
+        this.item = item;
+    }
+    execute() {
+        const level = this.doer.parent;
+        if (level instanceof Level)//failsafe
+        {
+            this.item.x = this.doer.x;//
+            this.item.y = this.doer.y;//item is dropped where the dropper is standing
+            this.item.parent = level;//item now has the parent of level instead of the entity that dropped it
+            drawLevel(level, theCurrentDisplay);//redraw screen since it now needs to be on the floor
+            
+            logMessage("you dropped: " + this.item.constructor.name.toLowerCase());
+            if (this.doer === theCurrentPlayer) {
+                new listInventoryAction(this.doer).execute();//show inventory when dropping an item
             }
         }
     }
@@ -830,8 +964,87 @@ function isWalkable(level, x, y) {
     return !occupied;//if occupied is false, isWalkable is true (& vice versa)
 }
 
+function monstersTurn() {
+    if (theCurrentLevel && theCurrentPlayer) {//failsafe
+        const badGuys = theCurrentLevel.children.filter(child => child instanceof badGuy);//get list array of all monsters
+        for (const monster of badGuys) {//for each monster
+            let actionTaken = false;
+
+            //try to drop a carried item
+            const inventory = monster.children;
+            if (inventory.length > 0 && uniformrandom(9) === 0) { // 10% chance
+                const itemToDrop = inventory[uniformrandom(inventory.length - 1)];//get an item from monster inventory
+                itemToDrop.x = monster.x;//
+                itemToDrop.y = monster.y;//drop the item onto the level where the monster was
+                itemToDrop.parent = theCurrentLevel;//now on the level instead of the monster
+                actionTaken = true;
+                
+                logMessage(monster.constructor.name + " dropped a " + itemToDrop.constructor.name.toLowerCase() + "!");
+            }
+
+            //try to pick up an item on the ground
+            if (!actionTaken)//if the monster didn't drop anything
+            {
+                const itemsOnGround = theCurrentLevel.children.filter(child =>//find items the monster can pick up using .filter in a callback function
+                    child.isPortable &&//checks if the item is portable
+                    child.x === monster.x &&//checks if the item is at the same position as monster
+                    child.y === monster.y &&//
+                    monster.canPickUp(child)//checks if the monster can pick up the item
+                );
+                if (itemsOnGround.length > 0 && uniformrandom(1) === 0) { // 50% chance and if there actually is anything there
+                    const itemToPick = itemsOnGround[uniformrandom(itemsOnGround.length - 1)];//get an item to pick up if there's multiple
+                    itemToPick.parent = monster;//set the item's parent to the monster so it's carried
+                    actionTaken = true;//the monster took an action
+
+                    logMessage(monster.constructor.name + " picked up a " + itemToPick.constructor.name.toLowerCase() + "!");
+                }
+            }
+
+            //if no picling up or putting downn, move randomly
+            if (!actionTaken) {
+                // Generate a random step (-1, 0, or 1 in both dimensions)
+                const dx = uniformrandom(2) - 1;
+                const dy = uniformrandom(2) - 1;
+                if (dx !== 0 || dy !== 0) {//if the monster didn't stay in the same spot
+                    const monsterMove = new moveAction(monster, dx, dy);//make a move action
+                    monsterMove.execute();//do the move action
+                }
+            }
+        }
+        // Redraw the map display after monsters action
+        drawLevel(theCurrentLevel, theCurrentDisplay);
+    }
+}
+
 window.addEventListener("keydown", (event) => {
     if (!theCurrentPlayer || !theCurrentLevel) return;//so the user can still use wasd for their name before the gane loads
+
+    if (isDropping) {//runs once the user has already clicked thr Q key to enter dropping mode, then clicked a number
+        event.preventDefault();
+        const key = event.key;//get the number
+        const index = parseInt(key, 10) - 1;//correlate that number with which item the number represents
+        const children = theCurrentPlayer.children;//get the item list
+
+        let action = null;//for now
+        if (!isNaN(index) && index >= 0 && index < children.length) {//check if it's a valid number
+            action = new dropAction(theCurrentPlayer, children[index]);//create the drop action ("children[index]" is the item the number corresponds to)
+        } 
+        else //if not a valid number
+        {
+            logMessage("drop cancelled.");
+        }
+        isDropping = false;
+
+        if (action !== null) //if something happened
+        {
+            action.execute();//now actually do the drop action
+
+            // monsters (movement code)
+            monstersTurn();
+        }
+        return;//since the purpose of this keyclick was to drop an item, we can just break out of the keydown event listener as it's served its purpose
+    }
+
     let action = null; //instead of "let action;" to line if (action !== null) doesn't always run
 
     if (event.key === "w" || event.key === "W") {//wasd for movement instead of arrow keys for universal controls with other games + natural hand placement + some keyboard don't have arrow keys
@@ -846,6 +1059,22 @@ window.addEventListener("keydown", (event) => {
         action = new pickupAction(theCurrentPlayer);
     } else if (event.key === "<") {
         action = new climbStairsAction(theCurrentPlayer);
+    } else if (event.key === "i" || event.key === "I") {
+        action = new listInventoryAction(theCurrentPlayer);//also list inventory whenever the I key is peessed
+    } else if (event.key === "q" || event.key === "Q") {
+        const children = theCurrentPlayer.children;//get the list of the player's children
+        if (children.length === 0) 
+        {
+            logMessage("you have nothing to drop!");
+        } 
+        else 
+        {
+            isDropping = true;
+            logMessage("select item to drop (press 1-" + children.length + ") or any other key to cancel:");
+            new listInventoryAction(theCurrentPlayer).execute();//lists the inventory so you know which number to press
+        }
+        event.preventDefault();//making sure the browser doesn't do anything
+        return;
     }
 
     if (action !== null) {
@@ -853,18 +1082,7 @@ window.addEventListener("keydown", (event) => {
         action.execute();//send in the movement code
 
         // monsters' turn.
-        if (theCurrentLevel && theCurrentPlayer) {//failsafe
-            const badGuys = theCurrentLevel.children.filter(child => child instanceof badGuy);//get list array of all hilichurls
-            for (const monster of badGuys) {//for each hilichurl
-                // Generate a random step (-1, 0, or 1 in both dimensions)
-                const dx = uniformrandom(2) - 1;
-                const dy = uniformrandom(2) - 1;
-                if (dx !== 0 || dy !== 0) {//if the monster didn't stay in the same spot
-                    const monsterMove = new moveAction(monster, dx, dy);//now we can create a move action for not the player as well
-                    monsterMove.execute();
-                }
-            }
-        }
+        monstersTurn();
     }
 });
 
