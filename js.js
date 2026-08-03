@@ -20,6 +20,18 @@ function logMessage(message) {
     }
 }
 
+function updateHealthDisplayer() {//updates the player's current health on the display
+    const healthBox = document.getElementById("hb");
+    if (!healthBox) return;//failsafe
+    if (theCurrentPlayer)//if there is a player
+    {
+        const hpct = Math.round((theCurrentPlayer.hp / theCurrentPlayer.maxHp) * 100);
+        healthBox.innerText = "Health: " + hpct + "%";
+    } else {
+        healthBox.innerText = "Health: -";//display nothing for health if tehre is no player
+    }
+}
+
 const submitbutton = document.getElementById('submitbutton');
 if (submitbutton) {
     const inputbox = document.getElementById('inputbox');
@@ -37,7 +49,7 @@ if (submitbutton) {
         
         const gameContainer = document.getElementById('game-container');
         if (gameContainer) {
-            gameContainer.style.display = 'flex';//so it doesn't awkwardly display before the game starts
+            gameContainer.style.display = 'grid';//bunch of added space using this and other css changes to make sure long lines in the log don't push content to the right
         }
         console.log(storedData);
         logMessage("hello " + storedData + ", welcome to the dungeon.");//using new log function instead
@@ -50,6 +62,7 @@ if (submitbutton) {
         theCurrentPlayer = new Player();
         theCurrentPlayer.name = storedData;
         theCurrentPlayer.parent = theCurrentLevel;
+        updateHealthDisplayer();//initially to show the health
         
         const startroom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];//random start room now using new random ufnction
         theCurrentPlayer.x = Math.floor(startroom.left + startroom.width / 2);//player (invisible as of writing) in middle of room
@@ -338,6 +351,10 @@ class Player extends Entity {
         this.name = "";
         this.x = 0;
         this.y = 0;
+        this.maxHp = 100;
+        this.hp = 100;// max by default
+        this.atk = 15;//default attack value
+        this.def = 5;//defense shield
     }
     get symbol() {
         return "@";
@@ -454,6 +471,10 @@ class badGuy extends Entity {
         }
         this.x = 0;
         this.y = 0;
+        this.maxHp = 10;//
+        this.hp = 10;   //
+        this.atk = 5;   // a lot less than player for default enemy. defined for each individual enemy
+        this.def = 1;   //
     }
     
     get parent() {
@@ -472,6 +493,14 @@ class badGuy extends Entity {
     }
 }
 class hilichurl extends badGuy {
+    constructor() {
+        super();
+        this.maxHp = 30;
+        this.hp = 30;
+        this.atk = 10; //more than a regular badGuy
+        this.def = 2;
+    }
+
     get symbol() {
         return "H"; // Representation on the grid
     }
@@ -830,10 +859,57 @@ class moveAction extends Action {
         const newX = this.doer.x + this.dx;
         const newY = this.doer.y + this.dy;
 
-        if (isWalkable(level, newX, newY)) {
+        //callback function to check if there is a monster in the target cell
+        const targetMonster = level.children.find(child =>
+            child instanceof badGuy && child.x === newX && child.y === newY
+        );
+
+        if (targetMonster && this.doer === theCurrentPlayer) {//if that callback function returned true then do this instead then return
+            new attackAction(this.doer, targetMonster).execute();//which is an attack action
+            return;
+        }
+
+        if (isWalkable(level, newX, newY)) {//otherwise then move if no attack
             this.doer.x = newX;
             this.doer.y = newY;
             drawLevel(level, theCurrentDisplay);//draw the grid with updated position
+        }
+    }
+}
+
+class attackAction extends Action {
+    constructor(doer, target) {//defining the attacker and attackee(?)
+        super(doer);
+        this.target = target;
+    }
+    execute() {
+        const variance = uniformrandom(4) - 2; // -2 to 2. this adds randomness to the attacks
+        const damage = Math.max(1, (this.doer.atk + variance) - this.target.def);//the amount of damage done is the attacker's attack value + the amount of randomness defined in the previous line, then minus the attackee's defense value (also negative or zero failsafe)
+        this.target.hp -= damage;
+
+        const attackerName = this.doer.name || this.doer.constructor.name;//get the name of the attacker and attackee for display
+        const targetName = this.target.constructor.name;
+
+        logMessage(attackerName + " attacks " + targetName + " for " + damage + " damage! (" + targetName + " HP: " + Math.max(0, this.target.hp) + "/" + this.target.maxHp + ")");
+
+        if (this.target.hp <= 0) {//if the attackee's health is less than or equal to zero (dead)
+            logMessage(targetName + " has been defeated!");
+            
+            //drop everything
+            const level = this.target.parent;//the level to place the items on
+            const items = this.target.children;//array of the items owned by the dead monster
+            for (const item of items) //for each item...
+            {
+                item.x = this.target.x; //set the coords of the item to the coords of the dead monster
+                item.y = this.target.y; 
+                item.parent = level; //set the parent of the item to the level so it's displayed on the level floor
+            }
+            
+            //remove target monster('s association with any parent)
+            this.target.parent = null;//the monster doesn't actually stop existing in the monsters array, so we can just dissasociate this monster from any kind of relationship
+            
+            // Redraw display
+            drawLevel(level, theCurrentDisplay);//redraw so the monster disappears
         }
     }
 }
@@ -902,6 +978,7 @@ class climbStairsAction extends Action {
                 if (this.doer === theCurrentPlayer) {
                     theCurrentPlayer = null;
                     theCurrentLevel = null;
+                    updateHealthDisplayer();
                 }
             }
         }
