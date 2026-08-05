@@ -5,6 +5,7 @@ let theCurrentLevel = null;
 let theCurrentPlayer = null;
 let theCurrentDisplay = null;
 let isDropping = false;
+let pendingAttackTarget = null; //when  player is asked "attack this ignore/following monster? Y/N" the monster is stored here
 
 const messageLog = [];//the output box should log messages (20 i've decided) instead of just showing one
 function logMessage(message) {
@@ -104,28 +105,30 @@ if (submitbutton) {
             }
         }
 
-        // adding 3-7 hilichurls to random rooms
-        const numHilichurls = boundedrandom(3, 7);
-        for (let i = 0; i < numHilichurls; i++) {//loop through number of hilichurls to add
-            for (let attempt = 0; attempt < 20; attempt++) {//20 attempts before giving up for each hilichurl
-                const hilichurlRoom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];//getting a random room to place the hilichurl in
-                const hx = boundedrandom(hilichurlRoom.left + 1, hilichurlRoom.right - 2);//random x in room
-                const hy = boundedrandom(hilichurlRoom.top + 1, hilichurlRoom.bottom - 2);//random y in room
+        // adding 3-7 monsters (now just monsters in general instead of just hilichurls) of various goals to random rooms
+        const monsterClasses = [hilichurl, hilichurl, hilichurl, slime, treasureHoarder, dog];// added more genshin impact enemies (other than dog). hilichurls are most common
+        const numMonsters = boundedrandom(3, 7);
+        for (let i = 0; i < numMonsters; i++) {//loop through number of monsters to add
+            for (let attempt = 0; attempt < 20; attempt++) {//20 attempts before giving up for each monster
+                const monsterRoom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];//getting a random room to place the monster in
+                const hx = boundedrandom(monsterRoom.left + 1, monsterRoom.right - 2);//random x in room
+                const hy = boundedrandom(monsterRoom.top + 1, monsterRoom.bottom - 2);//random y in room
 
                 const occupied = (theCurrentPlayer.x === hx && theCurrentPlayer.y === hy) ||
                 theCurrentLevel.children.some(child => child.x === hx && child.y === hy);//arrow callback function checking if player is there or any other entities are there
 
                 if (!occupied) {//if the position is not occupied
-                    const theHilichurl = new hilichurl();//create the hilichurl
-                    theHilichurl.x = hx;
-                    theHilichurl.y = hy;
-                    theHilichurl.parent = theCurrentLevel;
+                    const monsterClass = monsterClasses[uniformrandom(monsterClasses.length - 1)];//random monster type but hilichurl is still most common
+                    const theMonster = new monsterClass();//create the random monster
+                    theMonster.x = hx;
+                    theMonster.y = hy;
+                    theMonster.parent = theCurrentLevel;
 
-                    // 30% chance for this hilichurl to get a random item
+                    // 30% chance for this hilichurl or other monster to get a random item
                     if (uniformrandom(9) < 3) {
                         const itemClass = itemClasses[uniformrandom(itemClasses.length - 1)];
                         const carriedItem = new itemClass();
-                        carriedItem.parent = theHilichurl;
+                        carriedItem.parent = theMonster;
                     }
                     break;
                 }
@@ -475,6 +478,7 @@ class badGuy extends Entity {
         this.hp = 10;   //
         this.atk = 5;   // a lot less than player for default enemy. defined for each individual enemy
         this.def = 1;   //
+        this.goal = "ignore";//default fallback goal is ignore
     }
     
     get parent() {
@@ -505,6 +509,66 @@ class hilichurl extends badGuy {
         return "H"; // Representation on the grid
     }
     
+    get renderPriority() {
+        return 100; //render below player but above stairs
+    }
+}
+
+
+class slime extends badGuy {
+    constructor() {
+        super();
+        this.goal = "attack";//hostile by defaulty
+        this.maxHp = 50;
+        this.hp = 50;
+        this.atk = 15; //stronger than a hilichurl by a bit
+        this.def = 3;
+    }
+
+    get symbol() {
+        return "S";
+    }
+
+    get renderPriority() {
+        return 100;
+    }
+}
+
+
+class treasureHoarder extends badGuy {
+    constructor() {
+        super();
+        this.goal = "ignore";//harmless by default (until the player gets close)
+        this.maxHp = 20;
+        this.hp = 20;
+        this.atk = 8;
+        this.def = 1;
+    }
+
+    get symbol() {
+        return "T";
+    }
+
+    get renderPriority() {
+        return 100;
+    }
+}
+
+
+class dog extends badGuy {
+    constructor() {
+        super();
+        this.goal = "follow";//follows the player around
+        this.maxHp = 15;
+        this.hp = 15;
+        this.atk = 5;
+        this.def = 1;
+    }
+
+    get symbol() {
+        return "D";
+    }
+
     get renderPriority() {
         return 100; // Render below player (999999) but above stairs (10)
     }
@@ -865,7 +929,23 @@ class moveAction extends Action {
         );
 
         if (targetMonster && this.doer === theCurrentPlayer) {//if that callback function returned true then do this instead then return
-            new attackAction(this.doer, targetMonster).execute();//which is an attack action
+            if (targetMonster.goal === "attack") {//hostile monsters get attacked on contact as before without asking the player
+                new attackAction(this.doer, targetMonster).execute();//which is an attack action
+            } 
+            else 
+            {//ignore or following monsters ask the player first instead of attacking automatically
+                pendingAttackTarget = targetMonster;//sets which monster for if the user responds Y to the prompt and also makes the response code on key press run
+                let mood;
+                if (targetMonster.goal === "follow") 
+                {
+                    mood = "following";
+                } 
+                else 
+                {
+                    mood = "ignoring";
+                }
+                logMessage(targetMonster.constructor.name + " is " + mood + " you. Do you want to attack? (Y/N)");
+            }
             return;
         }
 
@@ -887,9 +967,21 @@ class attackAction extends Action {
         const damage = Math.max(1, (this.doer.atk + variance) - this.target.def);//the amount of damage done is the attacker's attack value + the amount of randomness defined in the previous line, then minus the attackee's defense value (also negative or zero failsafe)
         this.target.hp -= damage;
 
-        const attackerName = this.doer.name || this.doer.constructor.name;//get the name of the attacker and attackee for display
-        const targetName = this.target.constructor.name;
+        const attackerName = this.doer.name || this.doer.constructor.name;//get the name of the attacker for display
 
+        if (this.target === theCurrentPlayer) {//a monster is attacking the player so tell the player without the generic prompt
+            logMessage("A " + attackerName + " attacks you for " + damage + " damage! (Your HP: " + Math.max(0, this.target.hp) + "/" + this.target.maxHp + ")");
+
+            if (this.target.hp <= 0) {//the player died
+                logMessage("You have been defeated!");
+                theCurrentPlayer = null;
+                theCurrentLevel = null;
+                updateHealthDisplayer();
+            }
+            return;//leave early
+        }
+
+        const targetName = this.target.constructor.name;
         logMessage(attackerName + " attacks " + targetName + " for " + damage + " damage! (" + targetName + " HP: " + Math.max(0, this.target.hp) + "/" + this.target.maxHp + ")");
 
         if (this.target.hp <= 0) {//if the attackee's health is less than or equal to zero (dead)
@@ -1041,10 +1133,57 @@ function isWalkable(level, x, y) {
     return !occupied;//if occupied is false, isWalkable is true (& vice versa)
 }
 
+function distanceBetween(a, b) {//distance between two entities
+    return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+function tryMove(monster, dx, dy) {//uses isWalkable to see if we can move the monster, then if so, run the action. used for fleeing and attacking monsters
+    if (dx === 0 && dy === 0) return false;
+    const level = monster.parent;
+    if (!(level instanceof Level)) return false;
+    const newX = monster.x + dx;
+    const newY = monster.y + dy;
+    if (isWalkable(level, newX, newY)) {
+        new moveAction(monster, dx, dy).execute();
+        return true;
+    }
+    return false;
+}
+
+function stepToward(monster, target) {//walk one step toward the target trying diagonal first then straight
+    const dx = Math.sign(target.x - monster.x);
+    const dy = Math.sign(target.y - monster.y);
+    return tryMove(monster, dx, dy) ||
+           tryMove(monster, dx, 0) ||
+           tryMove(monster, 0, dy);
+}
+
+function stepAway(monster, target) {//walk one step away from the target; returns true if any direction worked
+    const dx = Math.sign(monster.x - target.x);
+    const dy = Math.sign(monster.y - target.y);
+    return tryMove(monster, dx, dy) ||
+           tryMove(monster, dx, 0) ||
+           tryMove(monster, 0, dy);
+}
+
+function updateMonsterGoal(monster) {//the monster's goal is a small state machine: events can change it
+    // a slime who has a low health starts fleeing instead of fighting
+    if (monster instanceof slime && monster.goal === "attack" && monster.hp < monster.maxHp / 2) {
+        monster.goal = "flee";
+        logMessage("the " + monster.constructor.name + " starts fleeing.");//using "monster.constructor.name" even though this is hardcoded to slime just incase i change it at all later
+    }
+    // a treasure horder that is ignored gets angry when the player gets close
+    if (monster instanceof treasureHoarder && monster.goal === "ignore" && distanceBetween(monster, theCurrentPlayer) <= 5) {
+        monster.goal = "attack";
+        logMessage("the " + monster.constructor.name + " gets angry and attacks.");
+    }
+}
+
 function monstersTurn() {
     if (theCurrentLevel && theCurrentPlayer) {//failsafe
         const badGuys = theCurrentLevel.children.filter(child => child instanceof badGuy);//get list array of all monsters
         for (const monster of badGuys) {//for each monster
+            updateMonsterGoal(monster);//check if each monster wants to change its goal first
             let actionTaken = false;
 
             //try to drop a carried item
@@ -1077,14 +1216,40 @@ function monstersTurn() {
                 }
             }
 
-            //if no picling up or putting downn, move randomly
+            //if no picking up or putting down, act according to the monster's goal (instead of just randomly move)
             if (!actionTaken) {
-                // Generate a random step (-1, 0, or 1 in both dimensions)
-                const dx = uniformrandom(2) - 1;
-                const dy = uniformrandom(2) - 1;
-                if (dx !== 0 || dy !== 0) {//if the monster didn't stay in the same spot
-                    const monsterMove = new moveAction(monster, dx, dy);//make a move action
-                    monsterMove.execute();//do the move action
+                switch (monster.goal) {//switch statement to check monster's goal
+                    case "follow"://friendly to the player so move towards the player using the new stepToward function
+                        stepToward(monster, theCurrentPlayer);
+                        break;
+
+                    case "attack"://hostile monster
+                        if (distanceBetween(monster, theCurrentPlayer) <= 1) {//within attack distance using new distanceBetween function
+                            new attackAction(monster, theCurrentPlayer).execute();//attack the player
+                            if (!theCurrentPlayer) return;//player died; stop the monster turn
+                        } else {//too far away: move closer
+                            stepToward(monster, theCurrentPlayer);
+                        }
+                        break;
+
+                    case "flee"://run but fight back if cornered
+                        const movedAway = stepAway(monster, theCurrentPlayer); //true if moving away happened
+                        if (!movedAway && distanceBetween(monster, theCurrentPlayer) <= 1) {//backed into a corner
+                            new attackAction(monster, theCurrentPlayer).execute();//fight back
+                            if (!theCurrentPlayer) return;//player died; stop the monster turn
+                        }
+                        break;
+
+                    case "ignore"://harmless so nothing and continue onto run the default fallback code
+                    default:
+                        // Generate a random step (-1, 0, or 1 in both dimensions)
+                        const dx = uniformrandom(2) - 1;
+                        const dy = uniformrandom(2) - 1;
+                        if (dx !== 0 || dy !== 0) {//if the monster didn't stay in the same spot
+                            const monsterMove = new moveAction(monster, dx, dy);//make a move action
+                            monsterMove.execute();//do the move action (fails if the player is in the way; never becomes an attack)
+                        }
+                        break;
                 }
             }
         }
@@ -1122,6 +1287,22 @@ window.addEventListener("keydown", (event) => {
         return;//since the purpose of this keyclick was to drop an item, we can just break out of the keydown event listener as it's served its purpose
     }
 
+    if (pendingAttackTarget) {//the player is deciding whether to attack an ignore/follow monster
+        event.preventDefault();
+        if (event.key === "y" || event.key === "Y") {
+            const target = pendingAttackTarget;
+            pendingAttackTarget = null;
+            new attackAction(theCurrentPlayer, target).execute();//attacks the monster
+            monstersTurn();
+        } 
+        else//so also if the player tries to walk away
+        {
+            logMessage("you leave the " + pendingAttackTarget.constructor.name + " alone.");
+            pendingAttackTarget = null;
+        }
+        return;
+    }
+
     let action = null; //instead of "let action;" to line if (action !== null) doesn't always run
 
     if (event.key === "w" || event.key === "W") {//wasd for movement instead of arrow keys for universal controls with other games + natural hand placement + some keyboard don't have arrow keys
@@ -1154,14 +1335,15 @@ window.addEventListener("keydown", (event) => {
         return;
     }
 
-    if (action !== null) {
+    if (action !== null) {//if a random other button wasn't clicked
         event.preventDefault();
         action.execute();//send in the movement code
+
+        if (pendingAttackTarget) {
+            return;//an attack prompt is showing so the monsters wait for the player's answer (which includes any button other than y as no)
+        }
 
         // monsters' turn.
         monstersTurn();
     }
 });
-
-
-
