@@ -6,6 +6,7 @@ let theCurrentPlayer = null;
 let theCurrentDisplay = null;
 let isDropping = false;
 let pendingAttackTarget = null; //when  player is asked "attack this ignore/following monster? Y/N" the monster is stored here
+const visRad = 8;//how many tiles the player can see in any direction
 
 const messageLog = [];//the output box should log messages (20 i've decided) instead of just showing one
 function logMessage(message) {
@@ -147,7 +148,21 @@ if (submitbutton) {
     });
 }
 
+function whereVisible(map, playerX, playerY, radius)//the function that calculates where the player can see works by creating a new temprary grid with the same shape and size as the actual grid, but only with true and false for where the player should be able to see
+{
+    const visibility = new Grid(map.width, map.height, false);//creating new grid with all squares invisible (false) by default
+    for (let y = 0; y < map.height; y++)
+    {
+        for (let x = 0; x < map.width; x++) 
+        {
+            const dx = x - playerX;
+            const dy = y - playerY;
+            visibility.set(x, y, dx * dx + dy * dy < radius * radius);//pythagorean distance formula. true if in range
 
+        }
+  }
+  return visibility;
+}
 
 //new randomness functions that make the code more readable
 function uniformrandom(max) {
@@ -161,9 +176,17 @@ function boundedrandom(min, max) {
 
 
 function drawLevel(level, display) {
+    const visibilityGrid = whereVisible(level.map, theCurrentPlayer.x, theCurrentPlayer.y, visRad);//runs the function that gets the grid of where the player should be able to see
     for (let y = 0; y < level.map.height; y++) {
         for (let x = 0; x < level.map.width; x++) {
-            display.set(x, y, level.map.get(x, y));//for all the tiles in the grid, add them to the display
+            if (visibilityGrid.get(x, y))//only paint cells that are visible according to the equivelant vision grid (the "disk")
+            {
+                display.set(x, y, level.map.get(x, y));//add all tiles that should be visible to the screen
+            } 
+            else 
+            {
+                display.set(x, y, " ");//clear cells outside
+            }
         }
     }
 
@@ -174,8 +197,10 @@ function drawLevel(level, display) {
     });
 
     for (const child of sortedChildren) {//loop through all the children and display them in order (highest priority is last as they get written last to display, meaning they'll nbe actually displayed)
-        const symbol = child.symbol || "?";//gets symbol from child class (set to @ for player below) or '?' if there is no symbol
-        display.set(child.x, child.y, symbol);//sets it onto the grid that is to be displayed
+        if (visibilityGrid.get(child.x, child.y)) {//only draw entities that are visible (if this returns true)
+            const symbol = child.symbol || "?";//gets symbol from child class (set to @ for player below) or '?' if there is no symbol
+            display.set(child.x, child.y, symbol);//sets it onto the grid that is to be displayed
+        }
     }
 
     const gamegridtext = document.getElementById('gamegridtext');
