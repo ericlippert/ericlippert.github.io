@@ -176,10 +176,25 @@ function boundedrandom(min, max) {
 
 
 function drawLevel(level, display) {
+    if (!theCurrentPlayer) return;//failsafe
     const visibilityGrid = whereVisible(level.map, theCurrentPlayer.x, theCurrentPlayer.y, visRad);//runs the function that gets the grid of where the player should be able to see
+
+    //get player memory
+    let memoryGrid = theCurrentPlayer.memory.get(level);
+    if (!memoryGrid)//if no memory yet
+    {
+        memoryGrid = new Grid(level.map.width, level.map.height, false);//create a new grid filled with false
+        theCurrentPlayer.memory.set(level, memoryGrid);//show already explored tiles
+    }
+
     for (let y = 0; y < level.map.height; y++) {
         for (let x = 0; x < level.map.width; x++) {
             if (visibilityGrid.get(x, y))//only paint cells that are visible according to the equivelant vision grid (the "disk")
+            {
+                memoryGrid.set(x, y, true);//save newly explored tiles
+                display.set(x, y, level.map.get(x, y));//visible tiles get shown (still without entities. now if they're supposed to be visible they get shows later in the for loop beginning with for (const child of sortedChildren))
+            } 
+            else if (memoryGrid.get(x, y))//if in memory show too
             {
                 display.set(x, y, level.map.get(x, y));//add all tiles that should be visible to the screen
             } 
@@ -383,6 +398,7 @@ class Player extends Entity {
         this.hp = 100;// max by default
         this.atk = 15;//default attack value
         this.def = 5;//defense shield
+        this.memory = new Map();//bool grid of the player's memory
     }
     get symbol() {
         return "@";
