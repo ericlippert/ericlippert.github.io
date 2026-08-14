@@ -34,6 +34,24 @@ function updateHealthDisplayer() {//updates the player's current health on the d
     }
 }
 
+const helpbutton = document.getElementById('helpbutton');
+if (helpbutton) 
+{
+    helpbutton.addEventListener('click', () => {
+        logMessage(
+            "-------------------------\n" +
+            "Controls:\n" +
+            "WASD to move (or attack if moving into a monster, which prompts you to press Y to confirm)\n" +
+            ", to pick up items\n" +
+            "< (shift + ,) to climb the stairs\n" +
+            "I to manually show inventory\n" +
+            "Q to show item-dropping menu\n" +    
+            "The goal is to find the crown (♕) and climb the stairs!\n"+
+            "-------------------------"
+        );
+    });
+}
+
 const submitbutton = document.getElementById('submitbutton');
 if (submitbutton) {
     const inputbox = document.getElementById('inputbox');

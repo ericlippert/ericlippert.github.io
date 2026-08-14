@@ -58,4 +58,12 @@
     flex-direction: column;
     gap: 15px;
     align-items: flex-start;
+    position: relative;
+}
+
+#helpbutton
+{
+    position: absolute;
+    right: 0;
+    top: 0;
 }
