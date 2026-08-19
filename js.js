@@ -94,8 +94,14 @@ if (submitbutton) {
         upStairway.parent = theCurrentLevel;
 
         const crownRoom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];
-        const crownX = boundedrandom(crownRoom.left + 1, crownRoom.right - 2);
-        const crownY = boundedrandom(crownRoom.top + 1, crownRoom.bottom - 2);
+        let crownX;
+        let crownY;
+        //try spots until we find floor for the really important item which is the crown
+        for (let attempt = 0; attempt < 20; attempt++) {
+            crownX = boundedrandom(crownRoom.left + 1, crownRoom.right - 2);
+            crownY = boundedrandom(crownRoom.top + 1, crownRoom.bottom - 2);
+            if (roomdata.grid.get(crownX, crownY) === " ") break;
+        }
 
         const crown = new Crown();
         crown.x = crownX;
@@ -111,7 +117,7 @@ if (submitbutton) {
                 const ix = boundedrandom(itemRoom.left + 1, itemRoom.right - 2);//random x in room
                 const iy = boundedrandom(itemRoom.top + 1, itemRoom.bottom - 2);//random y in room
 
-                const occupied = (theCurrentPlayer.x === ix && theCurrentPlayer.y === iy) || theCurrentLevel.children.some(child => child.x === ix && child.y === iy);//check if there's an entity there already
+                const occupied = (theCurrentPlayer.x === ix && theCurrentPlayer.y === iy) || theCurrentLevel.children.some(child => child.x === ix && child.y === iy) || theCurrentLevel.map.get(ix, iy) !== " ";//check if there's an entity there already or if the tile is a wall/pillar
 
                 if (!occupied) {//if not occupied 
                     const itemClass = itemClasses[uniformrandom(itemClasses.length - 1)];//random item with the name itemClass
@@ -134,7 +140,8 @@ if (submitbutton) {
                 const hy = boundedrandom(monsterRoom.top + 1, monsterRoom.bottom - 2);//random y in room
 
                 const occupied = (theCurrentPlayer.x === hx && theCurrentPlayer.y === hy) ||
-                theCurrentLevel.children.some(child => child.x === hx && child.y === hy);//arrow callback function checking if player is there or any other entities are there
+                theCurrentLevel.children.some(child => child.x === hx && child.y === hy) ||
+                theCurrentLevel.map.get(hx, hy) !== " ";//arrow callback function checking if player is there or any other entities are there, and also now rejecting non-floor in general
 
                 if (!occupied) {//if the position is not occupied
                     const monsterClass = monsterClasses[uniformrandom(monsterClasses.length - 1)];//random monster type but hilichurl is still most common
@@ -175,11 +182,135 @@ function whereVisible(map, playerX, playerY, radius)//the function that calculat
         {
             const dx = x - playerX;
             const dy = y - playerY;
-            visibility.set(x, y, dx * dx + dy * dy < radius * radius);//pythagorean distance formula. true if in range
+            if (dx * dx + dy * dy < radius * radius)//pythagorean distance formula. only check tiles in range
+            {
+                //walls and pillars block vision behind them, so only mark it visible if the line to it is clear
+                visibility.set(x, y, hasLineOfSight(map, playerX, playerY, x, y));
+            }
 
         }
+    }
+
+  //there was a bug where the corner tiles of the map/filled in walls ("█") were being made invisible by the code that doens't allow you to see past you current room's wall. the code until the end of this function fixes that
+  let changed = true;
+  while (changed)
+  {
+    changed = false;
+    for (let y = 0; y < map.height; y++)
+    {
+        for (let x = 0; x < map.width; x++) 
+        {
+            const dx = x - playerX;
+            const dy = y - playerY;
+            if (dx * dx + dy * dy >= radius * radius) continue;//if this tile is in the circular range of the player's vision
+            if (visibility.get(x, y)) continue;//already visible then continue to next tile
+            if (!blocksVision(map.get(x, y))) continue;//only apply this to walls and what's behind and next to walls
+
+            let neighborVisible = false;
+            for (let ny = y - 1; ny <= y + 1 && !neighborVisible; ny++)//
+            {                                                          // go through the 3x3 grid around each square (that of course is in the player's visibility circle)
+                for (let nx = x - 1; nx <= x + 1; nx++)                //
+                {
+                    if (nx === x && ny === y) continue;//this is what skips the tile itself
+                    if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue;//off the map
+                    if (visibility.get(nx, ny))
+                    {
+                        neighborVisible = true;
+                        break;
+                    }
+                }
+            }
+
+            if (neighborVisible)
+            {
+                visibility.set(x, y, true);//set these walls to visible
+                changed = true;
+            }
+        }
+    }
   }
+
   return visibility;
+}
+
+//anything that is not bare floor blocks vision (walls, room borders, pillars, etc.)
+function blocksVision(cell) {
+    return cell !== " ";
+}
+
+//walk along the line from the player to the target tile; if we hit a wall or pillar first, the target is hidden
+function hasLineOfSight(map, x0, y0, x1, y1) {
+    const lineCells = cellsInLine(x0, y0, x1, y1);
+    for (const c of lineCells) {
+        if (c.x === x0 && c.y === y0) continue;// player's own tile so don't count it
+        if (c.x === x1 && c.y === y1) return true;// only runs if it has gotten to the final tile which is not checked itself 
+        if (blocksVision(map.get(c.x, c.y))) return false;// returns false if the blocksvision function returns true
+    }
+    return true;//failsafe that runs in a scenario where the player's own cell is checked alone
+}
+
+//a "supercover" line: when the line passes exactly through a corner, both side tiles are included
+//so you can't peek diagonally through the crack between two walls or pillars
+function cellsInLine(x0, y0, x1, y1) {
+    const cells = [];
+    const dx = Math.abs(x1 - x0);//hroizontal distance (always positive) between the first and last x
+    const dy = Math.abs(y1 - y0);//vertical distance (always positive) between the first and last y
+
+    let stepX;
+    if (x0 < x1) 
+    {
+        stepX = 1;//moving right
+    }
+
+    else
+    {
+        stepX = -1;//moving left
+    }
+
+    let stepY;
+    if (y0 < y1) 
+    {
+        stepY = 1;//moving down
+    } 
+
+    else 
+    {
+        stepY = -1;//moving up
+    }
+    
+    let x = x0;
+    let y = y0;
+    let ix = 0;
+    let iy = 0;
+    cells.push({ x, y });//the player's initial tile
+
+    while (ix < dx || iy < dy) {
+        // This decision formula compares how "far along" each axis we are.
+        const decision = (1 + 2 * ix) * dy - (1 + 2 * iy) * dx;//pos if the invisible line passes through a horizontal line before vertical (and vice versa), 0 if it passes through an intersection of 4 perfectly (draws from middle of current square that the line is on)
+        if (decision === 0)//passing through intersection of 4 tiles
+        { 
+            cells.push({ x: x + stepX, y });
+            cells.push({ x, y: y + stepY });
+            x = x + stepX;//
+            y = y + stepY;//
+            ix = ix + 1;  //since we moved on the x and y axis for the visibility line
+            iy = iy + 1;  //
+            cells.push({ x, y });
+        } 
+        else if (decision < 0)//going to the horuizontal tile
+        {
+            x = x + stepX; 
+            ix = ix + 1;
+            cells.push({ x, y });
+        } 
+        else//going to the vertical tile
+        {
+            y = y + stepY; 
+            iy = iy + 1;
+            cells.push({ x, y });
+        }
+    }
+    return cells;//array of all cells between any two cells in a line
 }
 
 //new randomness functions that make the code more readable
@@ -214,11 +345,19 @@ function drawLevel(level, display) {
             } 
             else if (memoryGrid.get(x, y))//if in memory show too
             {
-                display.set(x, y, level.map.get(x, y));//add all tiles that should be visible to the screen
+                const cell = level.map.get(x, y);//remembered room/hall interior (blank floor) shows as shaded, but walls and pillars stay visible
+                if (cell === " ") 
+                {
+                    display.set(x, y, "▒");//now if you cant see a floor tile even if you've been there, it shows up as ▒ but the walls of remembered areas are still visible. this is so you know the difference between where there's no entities and where you simply can't see
+                } 
+                else 
+                {
+                    display.set(x, y, cell);//remembered walls and pillars (once i add that) stay visible
+                }
             } 
             else 
             {
-                display.set(x, y, " ");//clear cells outside
+                display.set(x, y, "▒");//clear cells outside (shaded so you can see the circle boundary)
             }
         }
     }
@@ -850,6 +989,55 @@ function digbenttunnel(gamegrid, roomA, roomB) {
 }
 
 
+function addPillars(gamegrid) //function that adds the "O" pillars themselves to the grid
+//by the way i should mention in case it's not obvious; these comments are for ME mostly (becuase i'll forget what something does after 5 minutes so having it just say is helpful) 
+{
+    const candidates = [];//list of allowed squares for pillars
+    for (let y = 0; y < gamegrid.height; y++) {   // for all tiles on the map
+        for (let x = 0; x < gamegrid.width; x++) {//
+            if (gamegrid.get(x, y) !== " ") continue;   //if the tile is open floor than don't skip it
+            let clear = true;//becomes false if the tile isn't a possible candidate
+            for (let dy = -1; dy <= 1 && clear; dy++) {//go through the y tiles one above, the same as, and one below the target square
+                for (let dx = -1; dx <= 1; dx++) {//for each y level that we're checking, check each individual tile on the x axis
+                    if (dx === 0 && dy === 0) continue;  // the cell we're checking itself
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx < 0 || nx >= gamegrid.width || ny < 0 || ny >= gamegrid.height) continue;//if it's off the map
+                    if (gamegrid.get(nx, ny) !== " ") 
+                    {
+                        clear = false; 
+                        break; 
+                    }
+                }
+            }
+            if (clear) candidates.push({ x, y });// add the tile as an allowed candidate to the candidates array
+        }
+    }
+
+    for (let i = candidates.length - 1; i > 0; i--) 
+    {
+        const j = uniformrandom(i);
+        [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }//fisher yates shuffle
+
+    const howMany = boundedrandom(2, 4);//placing the first 2-4 pillars from the randomly sorted list of candidates
+    let placed = 0;
+    for (let i = 0; i < candidates.length && placed < howMany; i++) 
+    {
+        const p = candidates[i];
+        gamegrid.set(p.x, p.y, "O");//directly place the pillar onto the map
+        placed++;
+        for (let j = candidates.length - 1; j > i; j--) {//go through every remaining candidate
+            const q = candidates[j];
+            if (Math.abs(q.x - p.x) <= 1 && Math.abs(q.y - p.y) <= 1)//check if too close to the new pillar
+            {
+                candidates.splice(j, 1);   //too close to the new pillar
+            }
+        }
+    }
+}
+
+
 
 
 
@@ -947,6 +1135,7 @@ function trycreaterooms() {
     }
 
     if (setofsets.length === 1) {
+        addPillars(gamegrid);//add the pillars
         gamegridtext.textContent = gamegrid.toString();
         return { rooms: existingrooms, grid: gamegrid }; // returning the data of the rooms and grid so it can be used in the rest of the game other than this function that just makes the initial grid
     }
