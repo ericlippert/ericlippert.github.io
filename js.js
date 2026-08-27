@@ -7,6 +7,7 @@ let theCurrentDisplay = null;
 let isDropping = false;
 let pendingAttackTarget = null; //when  player is asked "attack this ignore/following monster? Y/N" the monster is stored here
 const visRad = 8;//how many tiles the player can see in any direction
+const dungeonDepth = 5;//how many levels deep the dungeon goes (the crown is on the deepest level)
 
 const messageLog = [];//the output box should log messages (20 i've decided) instead of just showing one
 function logMessage(message) {
@@ -34,6 +35,20 @@ function updateHealthDisplayer() {//updates the player's current health on the d
     }
 }
 
+function updateFloorIndicator()//show which floor the player is on
+{
+    const floorBox = document.getElementById("floor-indicator");
+    if (!floorBox) return;//failsafe
+    if (theCurrentLevel)//if there's a level
+    {
+        floorBox.innerText = "Floor: " + theCurrentLevel.depth;
+    }
+    else
+    {
+        floorBox.innerText = "Floor: -";//display nothing if no level
+    }
+}
+
 const helpbutton = document.getElementById('helpbutton');
 if (helpbutton) 
 {
@@ -44,9 +59,10 @@ if (helpbutton)
             "WASD to move (or attack if moving into a monster, which prompts you to press Y to confirm)\n" +
             ", to pick up items\n" +
             "< (shift + ,) to climb the stairs\n" +
-            "I to manually show inventory\n" +
+            "> (shift + .) to descend the stairs\n" +
+            "I to manually show inventory (you shouldn't need to)\n" +
             "Q to show item-dropping menu\n" +    
-            "The goal is to find the crown (♕) and climb the stairs!\n"+
+            "The goal is to find the crown (♕) at the bottom and climb back up to the top level\n"+
             "-------------------------"
         );
     });
@@ -83,6 +99,7 @@ if (submitbutton) {
         theCurrentPlayer.name = storedData;
         theCurrentPlayer.parent = theCurrentLevel;
         updateHealthDisplayer();//initially to show the health
+        updateFloorIndicator();//initially to show which floor the player is on
         
         const startroom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];//random start room now using new random ufnction
         theCurrentPlayer.x = Math.floor(startroom.left + startroom.width / 2);//player (invisible as of writing) in middle of room
@@ -93,20 +110,26 @@ if (submitbutton) {
         upStairway.y = theCurrentPlayer.y;
         upStairway.parent = theCurrentLevel;
 
-        const crownRoom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];
-        let crownX;
-        let crownY;
-        //try spots until we find floor for the really important item which is the crown
-        for (let attempt = 0; attempt < 20; attempt++) {
-            crownX = boundedrandom(crownRoom.left + 1, crownRoom.right - 2);
-            crownY = boundedrandom(crownRoom.top + 1, crownRoom.bottom - 2);
-            if (roomdata.grid.get(crownX, crownY) === " ") break;
-        }
+        //first down stairs to go to the new levels
+        const downStairway = new DownStairway();
+        for (let attempt = 0; attempt < 20; attempt++)
+        {
+            const room = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];//random room
+            const sx = boundedrandom(room.left + 1, room.right - 2);//random x
+            const sy = boundedrandom(room.top + 1, room.bottom - 2);//random y
 
-        const crown = new Crown();
-        crown.x = crownX;
-        crown.y = crownY;
-        crown.parent = theCurrentLevel;
+            const occupied = (theCurrentPlayer.x === sx && theCurrentPlayer.y === sy) ||//not on the player
+                theCurrentLevel.children.some(child => child.x === sx && child.y === sy) ||//check through all children of the level
+                theCurrentLevel.map.get(sx, sy) !== " ";//clear space
+
+            if (!occupied)//if the spot is free
+            {
+                downStairway.x = sx;//place it there
+                downStairway.y = sy;//
+                downStairway.parent = theCurrentLevel;
+                break;
+            }
+        }
 
         //spawning random items on the level
         const itemClasses = [Coffee, Sword, Lyre, Potion, Sword];//list of all the items
@@ -162,7 +185,6 @@ if (submitbutton) {
         }
 
         console.log("Player spawned at:", theCurrentPlayer.x, theCurrentPlayer.y);
-        console.log("Crown spawned at:", crownX, crownY);
         console.log("made ", dungeon);//added earlier because the code wasn't working before
         
         theCurrentDisplay = new Grid(theCurrentLevel.map.width, theCurrentLevel.map.height, " ");//the grid that will be displayed. blank for now
@@ -533,6 +555,7 @@ class Level extends Entity {
     constructor(mapgrid) {
         super();
         this.map = mapgrid;
+        this.depth = 1;//first level is at the top
     }
     get parent() {
         return super.parent;
@@ -575,11 +598,40 @@ class Player extends Entity {
 }
 
 class UpStairway extends Entity {
+    constructor() 
+    {
+        super();
+        this.correspondingStaircase = null;//starts unlinked but will be used to create the relation between staircases
+    }
     get symbol() {
         return "<";//stair
     }
     get renderPriority() {
         return 10;//less than player
+    }
+    get parent() {
+        return super.parent;
+    }
+    set parent(newparent) {
+        if (newparent !== null && !(newparent instanceof Level)) {
+            throw new Error("must be a level");
+        }
+        super.parent = newparent;
+    }
+}
+
+class DownStairway extends Entity//to go to the new levels
+{
+    constructor()
+    {
+        super();
+        this.correspondingStaircase = null;
+    }
+    get symbol() {
+        return ">";  // the down staircase symbol
+    }
+    get renderPriority() {
+        return 10;  // same priority as up stairway, below player (999999)
     }
     get parent() {
         return super.parent;
@@ -1292,36 +1344,220 @@ class climbStairsAction extends Action {
     constructor(doer) {
         super(doer);
     }
+    execute()
+    {
+        const level = this.doer.parent;
+        if (!(level instanceof Level)) return;//failsafe
+
+        const stairway = level.children.find(child =>//look for stairway at the same position
+            child instanceof UpStairway &&
+            child.x === this.doer.x &&
+            child.y === this.doer.y
+        );
+        if (!stairway) return;//not on an up staircase
+
+        if (level.depth === 1) {//on the top level, so this is the exit
+            const hasCrown = this.doer.children.some(child => child instanceof Crown);//check if the crown is a child of the player
+            if (hasCrown) 
+            {
+                logMessage("you escaped with the Crown! You Win!");
+            } 
+            else 
+            {
+                logMessage("you escaped without the Crown! You Lose!");
+            }
+
+            if (this.doer === theCurrentPlayer) {
+                theCurrentPlayer = null;
+                theCurrentLevel = null;
+                updateHealthDisplayer();
+            }
+            return;
+        }
+
+        //deeper level if we didn't return earlier
+        const targetStair = stairway.correspondingStaircase;
+        const targetLevel = targetStair.parent;
+        this.doer.x = targetStair.x;
+        this.doer.y = targetStair.y;
+        this.doer.parent = targetLevel;//player now on the level above
+
+        //redraw
+        theCurrentLevel = targetLevel;//monstersTurn() and drawLevel() act on the new level
+        theCurrentDisplay = new Grid(targetLevel.map.width, targetLevel.map.height, " ");//blank display for the new level
+        drawLevel(targetLevel, theCurrentDisplay);
+        updateFloorIndicator();//show the new floor
+        logMessage("you climb the staircase.");//tell the player
+    }
+}
+
+class goDownAction extends Action {//the action taken when the player uses the ">" stairway to descend
+    constructor(doer) {
+        super(doer);
+    }
     execute() {
         const level = this.doer.parent;
-        if (level instanceof Level) //make sure valid level object
+        if (!(level instanceof Level)) return;//failsafe
+
+        //locate
+        const stairway = level.children.find(child =>
+            child instanceof DownStairway &&
+            child.x === this.doer.x &&
+            child.y === this.doer.y
+        );
+        if (!stairway) return;//tried to go down while not on a go down staircase
+
+        //if no existing next level yet
+        if (!stairway.correspondingStaircase) 
         {
-            const stairway = level.children.find(child =>//look for stairway at the same position
-                child instanceof UpStairway &&
-                child.x === this.doer.x &&
-                child.y === this.doer.y
-            );
+            //generate a brand new level using the same room generator
+            const roomdata = createtherooms();
+            const nextLevel = new Level(roomdata.grid);
+            nextLevel.parent = level.parent;//same parent as main level
+            nextLevel.depth = level.depth + 1;//one deeper than the current level (the current level the player is on)
 
+            //whether this is the bottom level (no down staircase goes deeper)
+            const isBottom = nextLevel.depth >= dungeonDepth;
 
-            if (stairway) //if there's a stairway at the same position
+            //place an UpStairway on the new level
+            const upStairway = new UpStairway();
+            for (let attempt = 0; attempt < 20; attempt++)
             {
-                const hasCrown = this.doer.children.some(child => child instanceof Crown);//check if the crown is a child of the player
-                if (hasCrown) 
-                {
-                    logMessage("you escaped with the Crown! You Win!");
-                } 
-                else 
-                {
-                    logMessage("you escaped without the Crown! You Lose!");
-                }
+                const room = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];//random room
+                const sx = boundedrandom(room.left + 1, room.right - 2);//random x
+                const sy = boundedrandom(room.top + 1, room.bottom - 2);//random y
 
-                if (this.doer === theCurrentPlayer) {
-                    theCurrentPlayer = null;
-                    theCurrentLevel = null;
-                    updateHealthDisplayer();
+                const occupied = nextLevel.children.some(child => child.x === sx && child.y === sy) ||//any entity already there
+                    nextLevel.map.get(sx, sy) !== " ";//true if there's a not clear space
+
+                if (!occupied)//free spot
+                {
+                    upStairway.x = sx;
+                    upStairway.y = sy;
+                    upStairway.parent = nextLevel;
+                    break;
+                }
+            }
+
+            //place a DownStairway on the new level (unless it's the bottom so the player can't go beyond the max depth)
+            let downStairway = null;
+            if (!isBottom)
+            {
+                downStairway = new DownStairway();
+                for (let attempt = 0; attempt < 20; attempt++)
+                {
+                    const room = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];//random room
+                    const sx = boundedrandom(room.left + 1, room.right - 2);//random x
+                    const sy = boundedrandom(room.top + 1, room.bottom - 2);//random y
+
+                    const occupied = nextLevel.children.some(child => child.x === sx && child.y === sy) ||//any entity already there
+                        nextLevel.map.get(sx, sy) !== " ";//true if there's a not clear space
+
+                    if (!occupied)//free spot
+                    {
+                        downStairway.x = sx;
+                        downStairway.y = sy;
+                        downStairway.parent = nextLevel;
+                        break;
+                    }
+                }
+            }
+
+            //link the two staircases
+            stairway.correspondingStaircase = upStairway;
+            upStairway.correspondingStaircase = stairway;
+
+            //spawning random items on the new level (but not on any staircase)
+            const itemClasses = [Coffee, Sword, Lyre, Potion, Sword];//list of all the items
+            const numItems = boundedrandom(5, 10);
+            for (let i = 0; i < numItems; i++) {//for the randomly chosen amount of items
+                for (let attempt = 0; attempt < 20; attempt++) {//20 attempts
+                    const itemRoom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];//random room
+                    const ix = boundedrandom(itemRoom.left + 1, itemRoom.right - 2);//random x in room
+                    const iy = boundedrandom(itemRoom.top + 1, itemRoom.bottom - 2);//random y in room
+
+                    const occupied = nextLevel.children.some(child => child.x === ix && child.y === iy) ||//any entity already there (including stairs)
+                        nextLevel.map.get(ix, iy) !== " ";//true if there's a not clear space
+
+                    if (!occupied)//if not occupied 
+                    {
+                        const itemClass = itemClasses[uniformrandom(itemClasses.length - 1)];//random item with the name itemClass
+                        const item = new itemClass();//create the item
+                        item.x = ix;//set location
+                        item.y = iy;
+                        item.parent = nextLevel;
+                        break;
+                    }
+                }
+            }
+
+            //spawn monsters on the new level (but not on any staircase)
+            const monsterClasses = [hilichurl, hilichurl, hilichurl, slime, treasureHoarder, dog];//hilichurls are most common
+            const numMonsters = boundedrandom(3, 7);
+            for (let i = 0; i < numMonsters; i++) {//loop through number of monsters to add
+                for (let attempt = 0; attempt < 20; attempt++) {//20 attempts before giving up for each monster
+                    const monsterRoom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];//getting a random room to place the monster in
+                    const hx = boundedrandom(monsterRoom.left + 1, monsterRoom.right - 2);//random x in room
+                    const hy = boundedrandom(monsterRoom.top + 1, monsterRoom.bottom - 2);//random y in room
+
+                    const occupied = nextLevel.children.some(child => child.x === hx && child.y === hy) ||//any entity already there
+                        nextLevel.map.get(hx, hy) !== " ";//rejecting non-floor in general
+
+                    if (!occupied) {//if the position is not occupied
+                        const monsterClass = monsterClasses[uniformrandom(monsterClasses.length - 1)];//random monster type
+                        const theMonster = new monsterClass();//create the random monster
+                        theMonster.x = hx;
+                        theMonster.y = hy;
+                        theMonster.parent = nextLevel;
+
+                        // 30% chance for this monster to get a random item
+                        if (uniformrandom(9) < 3) {
+                            const itemClass = itemClasses[uniformrandom(itemClasses.length - 1)];
+                            const carriedItem = new itemClass();
+                            carriedItem.parent = theMonster;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            //place the crown on the deepest level only (crown code is now here)
+            if (isBottom)
+            {
+                for (let attempt = 0; attempt < 20; attempt++)
+                {
+                    const room = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];//random room
+                    const cx = boundedrandom(room.left + 1, room.right - 2);//random x
+                    const cy = boundedrandom(room.top + 1, room.bottom - 2);//random y
+
+                    const occupied = nextLevel.children.some(child => child.x === cx && child.y === cy) ||//any entity already there
+                        nextLevel.map.get(cx, cy) !== " ";//true if there's a not clear space
+
+                    if (!occupied)//free spot
+                    {
+                        const crown = new Crown();
+                        crown.x = cx;
+                        crown.y = cy;
+                        crown.parent = nextLevel;
+                        break;
+                    }
                 }
             }
         }
+
+        //teleport the player to the corresponding staircase
+        const targetStair = stairway.correspondingStaircase;
+        const targetLevel = targetStair.parent;
+        this.doer.x = targetStair.x;
+        this.doer.y = targetStair.y;
+        this.doer.parent = targetLevel;//player now on different level
+
+        //redraw
+        theCurrentLevel = targetLevel;//monstersTurn() and drawLevel() act on the new level
+        theCurrentDisplay = new Grid(targetLevel.map.width, targetLevel.map.height, " ");//blank display for the new level
+        drawLevel(targetLevel, theCurrentDisplay);
+        updateFloorIndicator();//show the new floor
+        logMessage("you descend the staircase.");//tell the player
     }
 }
 
@@ -1565,6 +1801,8 @@ window.addEventListener("keydown", (event) => {
         action = new pickupAction(theCurrentPlayer);
     } else if (event.key === "<") {
         action = new climbStairsAction(theCurrentPlayer);
+    } else if (event.key === ">") {//down
+        action = new goDownAction(theCurrentPlayer);
     } else if (event.key === "i" || event.key === "I") {
         action = new listInventoryAction(theCurrentPlayer);//also list inventory whenever the I key is peessed
     } else if (event.key === "q" || event.key === "Q") {
