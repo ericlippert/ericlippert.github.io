@@ -52,6 +52,18 @@
     box-sizing: border-box;
 }
 
+#equipment-list
+{
+    font-family: monospace;
+    white-space: pre-line;
+    border: 1px solid black;
+    display: inline-block;
+    padding: 5px 10px;
+    margin: 0;
+    width: 200px;
+    box-sizing: border-box;
+}
+
 #hb
 {
     font-family: monospace;

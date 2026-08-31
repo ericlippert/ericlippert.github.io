@@ -5,6 +5,8 @@ let theCurrentLevel = null;
 let theCurrentPlayer = null;
 let theCurrentDisplay = null;
 let isDropping = false;
+let isPuttingOn = false;
+let isRemoving = false;
 let pendingAttackTarget = null; //when  player is asked "attack this ignore/following monster? Y/N" the monster is stored here
 const visRad = 8;//how many tiles the player can see in any direction
 const dungeonDepth = 5;//how many levels deep the dungeon goes (the crown is on the deepest level)
@@ -49,6 +51,73 @@ function updateFloorIndicator()//show which floor the player is on
     }
 }
 
+function updateEquipmentDisplayer()//updates the box that shows what the player has equipped
+{
+    const equipBox = document.getElementById("equipment-list");
+    if (!equipBox) return;//failsafe
+
+    if (!theCurrentPlayer)//if there is no player (like after dying)
+    {
+        equipBox.innerText = "Equipment: -";
+        return;
+    }
+
+    let text = "Equipment:\n";//start the text with a heading line
+
+    //these slots have one item each unlike hands
+    const oneItemSlots = ["head", "body", "finger", "feet"];//all the single-item slots (hands are handled separately)
+    for (const slot of oneItemSlots)//loop through each slot
+    {
+        const item = theCurrentPlayer.equipment.get(slot);//what is in this slot (undefined if empty)
+        if (item)//if there is an item in the slot
+        {
+            text += slot + ": " + item.constructor.name.toLowerCase() + "\n";//show its name
+        }
+        else//nothing
+        {
+            text += slot + ": none\n";
+        }
+    }
+
+    //two slots for hands
+    if (theCurrentPlayer.handItems.length === 0)//if nothing is being held
+    {
+        text += "hand: none";//none with no newline because it's the last line
+    }
+    else//if something is being held
+    {
+        text += "hand: ";
+        for (let i = 0; i < theCurrentPlayer.handItems.length; i++)//loop through each held item
+        {
+            const item = theCurrentPlayer.handItems[i];//get this held item
+            const itemName = item.constructor.name.toLowerCase();//the item's name
+
+            //"1 hand" vs "2 hands"
+            let handWord = "hand";//singular by default
+            if (item.hands !== 1) 
+            {
+                handWord = "hands";//plural if it takes more than one hand
+            }
+            text += itemName + " (" + item.hands + " " + handWord + ")";//like "sword (1 hand)"
+
+            if (i < theCurrentPlayer.handItems.length - 1)//if this isn't the last held item
+            {
+                text += ", ";//separate the items with a comma
+            }
+        }
+
+        //also show how many of the hand slots are being used total
+        let totalHands = 0;//start at zero
+        for (const item of theCurrentPlayer.handItems)//loop through each held item
+        {
+            totalHands += item.hands;//add up how many hands each one takes
+        }
+        text += "\nhands used: " + totalHands + "/2";
+    }
+
+    equipBox.innerText = text;//draw it to the screen
+}
+
 const helpbutton = document.getElementById('helpbutton');
 if (helpbutton) 
 {
@@ -61,7 +130,9 @@ if (helpbutton)
             "< (shift + ,) to climb the stairs\n" +
             "> (shift + .) to descend the stairs\n" +
             "I to manually show inventory (you shouldn't need to)\n" +
-            "Q to show item-dropping menu\n" +    
+            "Q to show item-dropping menu\n" +
+            "P to put to start weilding an item\n" +
+            "R to remove an item you're wearing / wielding\n" +    
             "The goal is to find the crown (♕) at the bottom and climb back up to the top level\n"+
             "-------------------------"
         );
@@ -100,10 +171,22 @@ if (submitbutton) {
         theCurrentPlayer.parent = theCurrentLevel;
         updateHealthDisplayer();//initially to show the health
         updateFloorIndicator();//initially to show which floor the player is on
+        updateEquipmentDisplayer();//show what slots can be equipped into
         
-        const startroom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];//random start room now using new random ufnction
-        theCurrentPlayer.x = Math.floor(startroom.left + startroom.width / 2);//player (invisible as of writing) in middle of room
-        theCurrentPlayer.y = Math.floor(startroom.top + startroom.height / 2);
+        //pick a random room and stand in its middle but try again if there's a pillar (it was possible for overlap before)
+        for (let attempt = 0; attempt < 20; attempt++)//20 attempts as per usual
+        {
+            const startroom = roomdata.rooms[uniformrandom(roomdata.rooms.length - 1)];//random start room
+            const px = Math.floor(startroom.left + startroom.width / 2);//middle of the room on the x and y axis
+            const py = Math.floor(startroom.top + startroom.height / 2);//
+
+            if (theCurrentLevel.map.get(px, py) === " ")//only spawn on bare floor (pillars "O" and walls "█" block)
+            {
+                theCurrentPlayer.x = px;//set the player's position
+                theCurrentPlayer.y = py;
+                break;//found a good spot
+            }
+        }
         
         const upStairway = new UpStairway();
         upStairway.x = theCurrentPlayer.x;
@@ -132,7 +215,7 @@ if (submitbutton) {
         }
 
         //spawning random items on the level
-        const itemClasses = [Coffee, Sword, Lyre, Potion, Sword];//list of all the items
+        const itemClasses = [Coffee, Sword, Lyre, Potion, Sword, Helmet, Armour, Boots, Shield, Claymore, Ring, Cloak];//list of all the items
         const numItems = boundedrandom(5, 10);
         for (let i = 0; i < numItems; i++) {//for the randomly chosen amount of items
             for (let attempt = 0; attempt < 20; attempt++) {//20 attempts
@@ -178,6 +261,12 @@ if (submitbutton) {
                         const itemClass = itemClasses[uniformrandom(itemClasses.length - 1)];
                         const carriedItem = new itemClass();
                         carriedItem.parent = theMonster;
+
+                        //automatically equip if possible
+                        if (theMonster.canWear(carriedItem)) 
+                        {
+                            new putOnAction(theMonster, carriedItem).execute();
+                        }
                     }
                     break;
                 }
@@ -579,6 +668,8 @@ class Player extends Entity {
         this.atk = 15;//default attack value
         this.def = 5;//defense shield
         this.memory = new Map();//bool grid of the player's memory
+        this.equipment = new Map();//mapping items to their slots for the player
+        this.handItems = [];//items held in hands since there can be two one-handed items
     }
     get symbol() {
         return "@";
@@ -648,7 +739,27 @@ class Item extends Entity{
     get isPortable() {
         return true;
     }
-    
+
+    //what slot the thing takes
+    get slot() {
+        return null;
+    }
+
+    //for weapons only (1 by default)
+    get hands() {
+        return 1;
+    }
+
+    //how much attack this item gives while equipped (0 by default)
+    get atkBonus() {
+        return 0;
+    }
+
+    //how much defense this item gives while equipped (0 by default)
+    get defBonus() {
+        return 0;
+    }
+
     get parent() {
         return super.parent;
     }
@@ -669,6 +780,12 @@ class Crown extends Item {
     get renderPriority() {
         return 20;//less than player but more than stairs
     }
+    get slot() {
+        return "head";//worn on head
+    }
+    get defBonus() {
+        return 1;//only protects a bit
+    }
 }
 
 class Sword extends Item {
@@ -677,6 +794,15 @@ class Sword extends Item {
     }
     get renderPriority() {
         return 20;//less than player but more than stairs
+    }
+    get slot() {
+        return "hand";
+    }
+    get hands() {
+        return 1;//not-claymore sword is one-handed
+    }
+    get atkBonus() {
+        return 3;//wielding a sword makes you hit harder
     }
 }
 
@@ -705,6 +831,12 @@ class Cloak extends Item {
     get renderPriority() {
         return 20;
     }
+    get slot() {
+        return "body";//worn
+    }
+    get defBonus() {
+        return 1;
+    }
 }
 
 class Lyre extends Item {
@@ -713,6 +845,103 @@ class Lyre extends Item {
     }
     get renderPriority() {
         return 20;
+    }
+    //some thigns can't be equipped
+}
+
+class Helmet extends Item {
+    get symbol() {
+        return '⛑︎';
+    }
+    get renderPriority() {
+        return 20;
+    }
+    get slot() {
+        return "head";
+    }
+    get defBonus() {
+        return 1;
+    }
+}
+
+class Armour extends Item {
+    get symbol() {
+        return '𐂫';
+    }
+    get renderPriority() {
+        return 20;
+    }
+    get slot() {
+        return "body";
+    }
+    get defBonus() {
+        return 3;
+    }
+}
+
+class Boots extends Item {
+    get symbol() {
+        return '𓃀';//egyptian foot thing
+    }
+    get renderPriority() {
+        return 20;
+    }
+    get slot() {
+        return "feet";
+    }
+    get defBonus() {
+        return 1;
+    }
+}
+
+class Ring extends Item {
+    get symbol() {
+        return '◎';
+    }
+    get renderPriority() {
+        return 20;
+    }
+    get slot() {
+        return "finger";//rings go on fingers
+    }
+    get defBonus() {
+        return 1;
+    }
+}
+
+class Shield extends Item {
+    get symbol() {
+        return '▣';
+    }
+    get renderPriority() {
+        return 20;
+    }
+    get slot() {
+        return "hand";
+    }
+    get hands() {
+        return 1;//takes one hand like a regular sword
+    }
+    get defBonus() {
+        return 3;//a shield blocks hits
+    }
+}
+
+class Claymore extends Item {
+    get symbol() {
+        return '𐃉';//google says that's a sword
+    }
+    get renderPriority() {
+        return 20;
+    }
+    get slot() {
+        return "hand";
+    }
+    get hands() {
+        return 2;//shield can't also be used
+    }
+    get atkBonus() {
+        return 5;//a claymore hits harder than a regular sword
     }
 }
 
@@ -729,6 +958,8 @@ class badGuy extends Entity {
         this.atk = 5;   // a lot less than player for default enemy. defined for each individual enemy
         this.def = 1;   //
         this.goal = "ignore";//default fallback goal is ignore
+        this.equipment = new Map();
+        this.handItems = [];
     }
     
     get parent() {
@@ -744,6 +975,11 @@ class badGuy extends Entity {
 
     canPickUp(item) {
         return true;
+    }
+
+    //whether this monster can wear/wield the given item (only some monsters can)
+    canWear(item) {
+        return false;//monsters can't wear anything by default and is overridden on a per-bad guy basis
     }
 }
 class hilichurl extends badGuy {
@@ -761,6 +997,10 @@ class hilichurl extends badGuy {
     
     get renderPriority() {
         return 100; //render below player but above stairs
+    }
+
+    canWear(item) {
+        return item.slot !== null;//can wear armor and wield weapons
     }
 }
 
@@ -801,6 +1041,10 @@ class treasureHoarder extends badGuy {
 
     get renderPriority() {
         return 100;
+    }
+
+    canWear(item) {
+        return item.slot !== null;//can wear armor and wield weapons
     }
 }
 
@@ -1297,6 +1541,9 @@ class attackAction extends Action {
                 item.parent = level; //set the parent of the item to the level so it's displayed on the level floor
             }
             
+            this.target.equipment.clear();//clear the weilded list
+            this.target.handItems = [];//clear the held list
+            
             //remove target monster('s association with any parent)
             this.target.parent = null;//the monster doesn't actually stop existing in the monsters array, so we can just dissasociate this monster from any kind of relationship
             
@@ -1468,7 +1715,7 @@ class goDownAction extends Action {//the action taken when the player uses the "
             upStairway.correspondingStaircase = stairway;
 
             //spawning random items on the new level (but not on any staircase)
-            const itemClasses = [Coffee, Sword, Lyre, Potion, Sword];//list of all the items
+            const itemClasses = [Coffee, Sword, Lyre, Potion, Sword, Helmet, Armour, Boots, Shield, Claymore, Ring, Cloak];//list of all the items
             const numItems = boundedrandom(5, 10);
             for (let i = 0; i < numItems; i++) {//for the randomly chosen amount of items
                 for (let attempt = 0; attempt < 20; attempt++) {//20 attempts
@@ -1515,6 +1762,12 @@ class goDownAction extends Action {//the action taken when the player uses the "
                             const itemClass = itemClasses[uniformrandom(itemClasses.length - 1)];
                             const carriedItem = new itemClass();
                             carriedItem.parent = theMonster;
+
+                            //automatically equip if possible
+                            if (theMonster.canWear(carriedItem)) 
+                            {
+                                new putOnAction(theMonster, carriedItem).execute();
+                            }
                         }
                         break;
                     }
@@ -1600,6 +1853,224 @@ class dropAction extends Action {
             }
         }
     }
+}
+
+class putOnAction extends Action {
+    constructor(doer, item) {
+        super(doer);
+        this.item = item;
+    }
+    execute() {
+        const slot = this.item.slot;//which slot this item goes into
+        const isPlayer = this.doer === theCurrentPlayer;//if the player is equipping the thing
+        
+        //correct pronouns/conjugation
+        let doerName;
+        if (isPlayer) 
+        {
+            doerName = "you";
+        } 
+        else 
+        {
+            doerName = "the " + this.doer.constructor.name.toLowerCase();
+        }
+        
+        const itemName = this.item.constructor.name.toLowerCase();
+
+        if (slot === "hand") 
+        {
+            const handsUsed = this.doer.handItems.reduce((total, item) => total + item.hands, 0);//callback function that goes through the list of items in the user's hands and adds the objects hand used values to this variable
+            
+            const alreadyHeld = this.doer.handItems.find(item => item === this.item);//true if already holding this item
+            if (alreadyHeld) 
+            {
+                let areIs;
+                if (isPlayer) 
+                {
+                    areIs = "are";
+                } 
+                else 
+                {
+                    areIs = "is";
+                }
+                logMessage(doerName + " " + areIs + " already holding the " + itemName);
+                return;
+            }
+
+            // can't exceed 2 hands total
+            if (handsUsed + this.item.hands > 2) 
+            {
+                let dontDoesnt;
+                if (isPlayer) 
+                {
+                    dontDoesnt = "don't";
+                } 
+                else 
+                {
+                    dontDoesnt = "doesn't";
+                }
+                logMessage(doerName + " " + dontDoesnt + " have enough hands to hold a " + itemName);
+                return;
+            }
+
+            // put it in hand
+            this.doer.handItems.push(this.item);
+            addItemStats(this.doer, this.item);//wielding the item boosts the doer's stats
+            logMessage(doerName + " started holding the " + itemName);
+        }
+        else 
+        {
+            if (!slot)//can't be equipped at all
+            {
+                logMessage(doerName + " can't equip " + itemName);
+                return;
+            }
+
+            //auto swap
+            const currentItem = this.doer.equipment.get(slot);
+            if (currentItem) 
+            {
+                subtractItemStats(this.doer, currentItem);//stop getting the old item's bonuses
+
+                let removeRemoves;
+                if (isPlayer) 
+                {
+                    removeRemoves = "remove";
+                } 
+                else 
+                {
+                    removeRemoves = "removes";
+                }
+                logMessage(doerName + " " + removeRemoves + " the " + currentItem.constructor.name.toLowerCase() + ".");
+                this.doer.equipment.delete(slot);//no longer being held but still in inventory
+            }
+
+            //put on the new item
+            this.doer.equipment.set(slot, this.item);
+            addItemStats(this.doer, this.item);//wearing the item boosts the doer's stats
+
+            let putOnPutsOn;
+            if (isPlayer) {
+                putOnPutsOn = "put on";
+            } 
+            else {
+                putOnPutsOn = "puts on";
+            }
+            logMessage(doerName + " " + putOnPutsOn + " the " + itemName + ".");
+        }
+
+        if (this.doer === theCurrentPlayer)
+        {
+            new listInventoryAction(this.doer).execute();//show updated inventory
+            updateEquipmentDisplayer();//show the newly equipped item in the equip slots box
+        }
+    }
+}
+
+class removeAction extends Action 
+{
+    constructor(doer, item) 
+    {
+        super(doer);
+        this.item = item;
+    }
+    execute() 
+    {
+        const slot = this.item.slot;//like hand, body, etc
+        const isPlayer = this.doer === theCurrentPlayer;//true if a human is the one removing the item
+        const doerName = isPlayer ? "you" : "the " + this.doer.constructor.name.toLowerCase();//what to call the doer in the messages
+        const itemName = this.item.constructor.name.toLowerCase();//the item's name in lowercase
+
+        // hand items use the handItems list
+        if (slot === "hand")
+        {
+            const index = this.doer.handItems.indexOf(this.item);
+            if (index === -1) // -1 means not found
+            {
+                logMessage(doerName + (isPlayer ? " are" : " is") + " not holding the " + itemName);
+                return;
+            }
+
+            // remove from hands; item stays in inventory (children)
+            this.doer.handItems.splice(index, 1);
+            subtractItemStats(this.doer, this.item);//no longer getting this item's bonuses
+            logMessage(doerName + (isPlayer ? " put away" : " puts away") + " the " + itemName);//still in inventory
+        }
+        //not hand items
+        else if (slot) 
+        {
+            const currentItem = this.doer.equipment.get(slot);
+            if (currentItem !== this.item)//if you try to unequip something not equiped
+            {
+                logMessage("the " + itemName + " is not equipped");
+                return;
+            }
+            this.doer.equipment.delete(slot);
+            subtractItemStats(this.doer, this.item);//no longer getting this item's bonuses
+            logMessage(doerName + (isPlayer ? " take off" : " takes off") + " the " + itemName);
+        }
+        //can't be equipped
+        else 
+        {
+            logMessage(doerName + " can't remove the " + itemName);
+            return;
+        }
+
+        if (this.doer === theCurrentPlayer)
+        {
+            new listInventoryAction(this.doer).execute();//update inventory
+            updateEquipmentDisplayer();//show the removed item's slot as "none"
+        }
+    }
+}
+
+//list of everything the entity currently has equipped
+function getEquippedItems(entity) {
+    const equippedItems = [];
+
+    const wornItems = entity.equipment.values();
+    for (const item of wornItems)
+    {
+        equippedItems.push(item);
+    }
+
+    const wieldedItems = entity.handItems;
+    for (const item of wieldedItems)
+    {
+        equippedItems.push(item);
+    }
+
+    return equippedItems;
+}
+
+//list of the entity's items that can be equipped but aren't already equipped
+function getWearableItems(entity) {
+    const equipped = getEquippedItems(entity);//the items the entity already has on
+    const wearableItems = [];//make an empty list to fill up
+
+    const inventory = entity.children;//the items the entity is carrying
+    for (const item of inventory) 
+    {//loop through the whole inventory
+        const canBeEquipped = item.slot !== null;
+        const notAlreadyEquipped = !equipped.includes(item);//true if the item isn't already on
+        if (canBeEquipped && notAlreadyEquipped)//if it can be equipped and isn't already
+        {
+            wearableItems.push(item);
+        }
+    }
+
+    return wearableItems;
+}
+
+//add the stat bonuses of an equipped item to the entity that has it equipped
+function addItemStats(doer, item) {
+    doer.atk += item.atkBonus;
+    doer.def += item.defBonus;
+}
+
+function subtractItemStats(doer, item) {
+    doer.atk -= item.atkBonus;
+    doer.def -= item.defBonus;
 }
 
 function isWalkable(level, x, y) {
@@ -1697,6 +2168,12 @@ function monstersTurn() {
                     actionTaken = true;//the monster took an action
 
                     logMessage(monster.constructor.name + " picked up a " + itemToPick.constructor.name.toLowerCase() + "!");
+
+                    //monster equips automatically when possible
+                    if (monster.canWear(itemToPick)) 
+                    {
+                        new putOnAction(monster, itemToPick).execute();
+                    }
                 }
             }
 
@@ -1771,6 +2248,57 @@ window.addEventListener("keydown", (event) => {
         return;//since the purpose of this keyclick was to drop an item, we can just break out of the keydown event listener as it's served its purpose
     }
 
+    if (isPuttingOn)//once user clicks p
+    {
+        event.preventDefault();
+        const key = event.key;//get the number
+        const index = parseInt(key, 10) - 1;//base 10
+        const wearableItems = getWearableItems(theCurrentPlayer);//same list that was shown when the mode started
+
+        let action = null;//for now
+        if (!isNaN(index) && index >= 0 && index < wearableItems.length) {//check if it's a number that's positive and in range of length
+            action = new putOnAction(theCurrentPlayer, wearableItems[index]);//create the put on action
+        } 
+        else //if not a valid number
+        {
+            logMessage("put on cancelled.");
+        }
+        isPuttingOn = false;
+
+        if (action !== null) //if something happened
+        {
+            action.execute();//now actually do the put on action
+            monstersTurn();
+        }
+        return;//break out of keydown event listener
+    }
+
+    if (isRemoving) 
+    {
+        event.preventDefault();
+        const key = event.key;
+        const index = parseInt(key, 10) - 1;
+        const equippedItems = getEquippedItems(theCurrentPlayer);
+
+        let action = null;//for now
+        if (!isNaN(index) && index >= 0 && index < equippedItems.length) 
+        {
+            action = new removeAction(theCurrentPlayer, equippedItems[index]);//create the remove action
+        } 
+        else
+        {
+            logMessage("remove cancelled.");
+        }
+        isRemoving = false;
+
+        if (action !== null) //if something happened
+        {
+            action.execute();//now actually do the remove action
+            monstersTurn();
+        }
+        return;
+    }
+
     if (pendingAttackTarget) {//the player is deciding whether to attack an ignore/follow monster
         event.preventDefault();
         if (event.key === "y" || event.key === "Y") {
@@ -1789,23 +2317,40 @@ window.addEventListener("keydown", (event) => {
 
     let action = null; //instead of "let action;" to line if (action !== null) doesn't always run
 
-    if (event.key === "w" || event.key === "W") {//wasd for movement instead of arrow keys for universal controls with other games + natural hand placement + some keyboard don't have arrow keys
+    if (event.key === "w" || event.key === "W") 
+    {//wasd for movement instead of arrow keys for universal controls with other games + natural hand placement + some keyboard don't have arrow keys
         action = new moveAction(theCurrentPlayer, 0, -1);//now defining which specific thing gets moved instead of hardcoded to player
-    } else if (event.key === "s" || event.key === "S") {
+    } 
+    else if (event.key === "s" || event.key === "S") 
+    {
         action = new moveAction(theCurrentPlayer, 0, 1);
-    } else if (event.key === "a" || event.key === "A") {
+    } 
+    else if (event.key === "a" || event.key === "A") 
+    {
         action = new moveAction(theCurrentPlayer, -1, 0);
-    } else if (event.key === "d" || event.key === "D") {
+    } 
+    else if (event.key === "d" || event.key === "D") 
+    {
         action = new moveAction(theCurrentPlayer, 1, 0);
-    } else if (event.key === ",") {
+    } 
+    else if (event.key === ",") 
+    {
         action = new pickupAction(theCurrentPlayer);
-    } else if (event.key === "<") {
+    } 
+    else if (event.key === "<") 
+    {
         action = new climbStairsAction(theCurrentPlayer);
-    } else if (event.key === ">") {//down
+    } 
+    else if (event.key === ">") 
+    {
         action = new goDownAction(theCurrentPlayer);
-    } else if (event.key === "i" || event.key === "I") {
+    } 
+    else if (event.key === "i" || event.key === "I") 
+    {
         action = new listInventoryAction(theCurrentPlayer);//also list inventory whenever the I key is peessed
-    } else if (event.key === "q" || event.key === "Q") {
+    } 
+    else if (event.key === "q" || event.key === "Q") 
+    {
         const children = theCurrentPlayer.children;//get the list of the player's children
         if (children.length === 0) 
         {
@@ -1816,6 +2361,68 @@ window.addEventListener("keydown", (event) => {
             isDropping = true;
             logMessage("select item to drop (press 1-" + children.length + ") or any other key to cancel:");
             new listInventoryAction(theCurrentPlayer).execute();//lists the inventory so you know which number to press
+        }
+        event.preventDefault();//making sure the browser doesn't do anything
+        return;
+    } 
+    else if (event.key === "p" || event.key === "P") 
+    {
+        const wearableItems = getWearableItems(theCurrentPlayer);//items that can be equipped and aren't already
+        if (wearableItems.length === 0) 
+        {
+            logMessage("you have nothing you can wear or wield!");
+        } 
+        else 
+        {
+            const equippedItems = getEquippedItems(theCurrentPlayer);//what the player already has on
+            if (equippedItems.length === 0) 
+            {
+                logMessage("you are wearing and weilding nothing");
+            } 
+            else 
+            {
+                logMessage("You are wearing / wielding:\n" + equippedItems.map(item => item.constructor.name.toLowerCase()).join("\n"));//list just the names
+            }
+            //numbered list of the wearable but not equipped items
+            let carryingList = "You are carrying:\n";
+            for (let idx = 0; idx < wearableItems.length; idx++) {//all wearable items
+                const item = wearableItems[idx];
+                const itemName = item.constructor.name.toLowerCase();
+                carryingList += (idx + 1) + ". " + itemName;//add a numbered line like "1. helmet"
+                if (idx < wearableItems.length - 1)//if this isn't the last item then add a new line in between items
+                {
+                    carryingList += "\n";
+                }
+            }
+            logMessage(carryingList);
+            logMessage("which item would you like to equip? (press 1-" + wearableItems.length + " or any other key to cancel):");
+            isPuttingOn = true;
+        }
+        event.preventDefault();//making sure the browser doesn't do anything
+        return;
+    } 
+    else if (event.key === "r" || event.key === "R") 
+    {
+        const equippedItems = getEquippedItems(theCurrentPlayer);//what the player has on
+        if (equippedItems.length === 0) 
+        {
+            logMessage("you have nothing to remove!");
+        } 
+        else 
+        {
+            let wornList = "You are wearing / wielding:\n";
+            for (let idx = 0; idx < equippedItems.length; idx++) {//loop through each currently equipped item
+                const item = equippedItems[idx];
+                const itemName = item.constructor.name.toLowerCase();
+                wornList += (idx + 1) + ". " + itemName;
+                if (idx < equippedItems.length - 1)
+                {
+                    wornList += "\n";
+                }
+            }
+            logMessage(wornList);//numbered list of what's equipped
+            logMessage("which item would you like to remove? (press 1-" + equippedItems.length + " or any other key to cancel):");
+            isRemoving = true;
         }
         event.preventDefault();//making sure the browser doesn't do anything
         return;
