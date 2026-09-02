@@ -11,6 +11,93 @@ let pendingAttackTarget = null; //when  player is asked "attack this ignore/foll
 const visRad = 8;//how many tiles the player can see in any direction
 const dungeonDepth = 5;//how many levels deep the dungeon goes (the crown is on the deepest level)
 
+const traits = {
+    pyromancer: 
+    {
+        name: "Pyromancer",
+        element: "pyro",
+        maxHpBonus: 0,
+        atkBonus: 2,
+        defBonus: 0,
+        cantWeild: ["Armour", "Claymore"],
+        desc: "uses pyro (fire) to deal 2 extra damage, but can't wear armour or use a claymore"
+    },
+    cryomancer: 
+    {
+        name: "Cryomancer",
+        element: "cryo",
+        maxHpBonus: 10,
+        atkBonus: 1,
+        defBonus: 1,
+        cantWeild: ["Claymore"],
+        desc: "uses cryo (ice) to gain 10 HP, and an attack and defence bonus of 1, but can't use a claymore"
+    },
+    hydromancer: 
+    {
+        name: "Hydromancer",
+        element: "hydro",
+        maxHpBonus: 30,
+        atkBonus: -1,
+        defBonus: 1,
+        cantWeild: ["Armour"],
+        desc: "uses hydro (water) to gain 30 HP and 1 defence, but loses 1 attack and can't wear armour"
+    },
+    electromancer: 
+    {
+        name: "Electromancer",
+        element: "electro",
+        maxHpBonus: -20,
+        atkBonus: 4,
+        defBonus: 0,
+        cantWeild: ["Armour", "Shield"],
+        desc: "uses electro (electricity) to gain 4 attack, but loses 20 HP and can't wear armour and weild a shield"
+    },
+    aeromancer: 
+    {
+        name: "Aeromancer",
+        element: "anemo",
+        maxHpBonus: 5,
+        atkBonus: 2,
+        defBonus: 0,
+        cantWeild: ["Armour", "Claymore"],
+        desc: "uses anemo (wind) to gain 5 Hp and 2 attack but can't wear armour or use a claymore"
+    },
+    geomancer: 
+    {
+        name: "Geomancer",
+        element: "geo",
+        maxHpBonus: 15,
+        atkBonus: 0,
+        defBonus: 2,
+        cantWeild: [],
+        desc: "uses geo (earth) to gain 15 HP and 2 defence."
+    },
+    dendromancer: 
+    {
+        name: "Dendromancer",
+        element: "dendro",
+        maxHpBonus: 20,
+        atkBonus: 1,
+        defBonus: 1,
+        cantWeild: ["Armour"],
+        desc: "uses dendro (nature) to gain 20 HP, 1 attack, and 1 defence, but can't wear armour"
+    }
+};
+
+
+const effectiveness =//lookup table for what elements are effective against what elements
+{
+    pyro:    { pyro: 1, hydro: 0.5, electro: 1, cryo: 1, anemo: 2, geo: 1, dendro: 1 },
+    hydro:   { pyro: 2, hydro: 1, electro: 1, cryo: 1, anemo: 1, geo: 1, dendro: 0.5 },
+    electro: { pyro: 1, hydro: 1, electro: 1, cryo: 0.5, anemo: 1, geo: 1, dendro: 2 },
+    cryo:    { pyro: 1, hydro: 1, electro: 2, cryo: 1, anemo: 1, geo: 0.5, dendro: 1 },
+    anemo:   { pyro: 0.5, hydro: 1, electro: 1, cryo: 1, anemo: 1, geo: 2, dendro: 1 },
+    geo:     { pyro: 1, hydro: 1, electro: 1, cryo: 2, anemo: 0.5, geo: 1, dendro: 1 },
+    dendro:  { pyro: 1, hydro: 2, electro: 0.5, cryo: 1, anemo: 1, geo: 1, dendro: 1 }
+};//every element is strong against exactly one and weak against exactly one
+
+
+
 const messageLog = [];//the output box should log messages (20 i've decided) instead of just showing one
 function logMessage(message) {
     messageLog.push(message);//adds the message to the end of the array
@@ -118,6 +205,44 @@ function updateEquipmentDisplayer()//updates the box that shows what the player 
     equipBox.innerText = text;//draw it to the screen
 }
 
+function updateTraitDisplayer()//updates the box that shows the player's chosen trait(s)
+{
+    const traitBox = document.getElementById("traitdisplay");
+    if (!traitBox)//failsafe
+    {
+        return;
+    }
+
+    if (!theCurrentPlayer)//no player
+    {
+        traitBox.innerText = "traits: -";
+        return;
+    }
+
+    if (theCurrentPlayer.traits.length === 0)//no traits chosen yet
+    {
+        traitBox.innerText = "none";
+        return;
+    }
+
+    let text = "Traits:\n";
+    for (let i = 0; i < theCurrentPlayer.traits.length; i++)//go through all traits IF it ends up being possible to have multiple traits at some point. futureproofing
+    {
+        const traitKey = theCurrentPlayer.traits[i];
+        const trait = traits[traitKey];//look up the full trait definition
+        if (!trait)//failsafe
+        {
+            continue;
+        }
+        text += trait.name + " (" + trait.element + ")";//"Pyromancer (pyro)"
+        if (i < theCurrentPlayer.traits.length - 1)//separate multiple traits with a newline (not  last one)
+        {
+            text += "\n";
+        }
+    }
+    traitBox.innerText = text;//draw it to the screen
+}
+
 const helpbutton = document.getElementById('helpbutton');
 if (helpbutton) 
 {
@@ -130,8 +255,8 @@ if (helpbutton)
             "< (shift + ,) to climb the stairs\n" +
             "> (shift + .) to descend the stairs\n" +
             "I to manually show inventory (you shouldn't need to)\n" +
-            "Q to show item-dropping menu\n" +
-            "P to put to start weilding an item\n" +
+            "Q to drop an item\n" +
+            "P to start weilding an item\n" +
             "R to remove an item you're wearing / wielding\n" +    
             "The goal is to find the crown (♕) at the bottom and climb back up to the top level\n"+
             "-------------------------"
@@ -145,13 +270,80 @@ if (submitbutton) {
     const outputtext = document.getElementById('outputtext');
     const enteryourname = document.getElementById('enteryourname');
     const gamegridtext = document.getElementById('gamegridtext');
+    const traittext = document.getElementById('traittext');
+    const traitlist = document.getElementById('traitlist');
 
     let storedData = "";
+    let selectedTraitKey = null;//chosen by the player
+
+    //create a button for each trait
+    for (const traitKey in traits)
+    {
+        const trait = traits[traitKey];//the trait definition object
+        const btn = document.createElement("button");//make the element (with the css style)
+        btn.textContent = trait.name + ": " + trait.desc;//put the trait name and description in the button
+        btn.dataset.traitKey = traitKey;//remember which trait this button is for (so the random button can find it)
+        btn.addEventListener('click', () => {
+            
+            for (const other of traitlist.querySelectorAll('button')) 
+            {
+                other.classList.remove('selected');//deselect
+            }
+            btn.classList.add('selected');//visually select
+
+            selectedTraitKey = traitKey;//select in code
+            if (traittext)//failsafe
+            {
+                traittext.innerText = "pick your trait (picked: " + trait.name + ")";//update the heading text
+            }
+        });
+        traitlist.appendChild(btn);//place the button into the trait list area
+    }
+
+    //random button code
+    const randomBtn = document.createElement("button");
+    randomBtn.textContent = "random trait";
+    randomBtn.addEventListener('click', () => 
+    {
+        const traitKeys = Object.keys(traits);//all avaliable traits
+        const randomKey = traitKeys[uniformrandom(traitKeys.length - 1)];//random one
+        //find that trait's button and click it (runs the normal selection code)
+        for (const btn of traitlist.querySelectorAll('button'))//get the right button
+        {
+            if (btn.dataset.traitKey === randomKey) 
+            {
+                btn.click();//artificial click
+                break;
+            }
+        }
+    });
+    traitlist.appendChild(randomBtn);//place it in the list below the trait buttons
+
+    //making the enter key also work to submit, mirroring the click behaviour
+    inputbox.addEventListener('keydown', (event) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            submitbutton.click();//click the submit button
+        }
+    });
 
     submitbutton.addEventListener('click', () => {
         storedData = inputbox.value;
+        if (!selectedTraitKey)//trait is required before starting: refuse and tell the player
+        {
+            if (traittext)//failsafe
+            {
+                traittext.innerText = "pick a trait first!";//can't start without a trait
+            }
+            return;
+        }
         inputbox.style.display = 'none';
         enteryourname.style.display = 'none';
+        if (traittext)
+        {
+            traittext.style.display = 'none';//hide the prompt text
+        }
+        traitlist.style.display = 'none';//hide the trait buttons
         submitbutton.style.display = 'none';
         
         const gameContainer = document.getElementById('game-container');
@@ -168,10 +360,14 @@ if (submitbutton) {
 
         theCurrentPlayer = new Player();
         theCurrentPlayer.name = storedData;
+        theCurrentPlayer.applyTrait(selectedTraitKey);//apply the trait
+        const chosenTrait = traits[selectedTraitKey];
+        logMessage("you are a " + chosenTrait.name + "!");//tell the player what they became
         theCurrentPlayer.parent = theCurrentLevel;
         updateHealthDisplayer();//initially to show the health
         updateFloorIndicator();//initially to show which floor the player is on
         updateEquipmentDisplayer();//show what slots can be equipped into
+        updateTraitDisplayer();//show trait in ui
         
         //pick a random room and stand in its middle but try again if there's a pillar (it was possible for overlap before)
         for (let attempt = 0; attempt < 20; attempt++)//20 attempts as per usual
@@ -670,6 +866,48 @@ class Player extends Entity {
         this.memory = new Map();//bool grid of the player's memory
         this.equipment = new Map();//mapping items to their slots for the player
         this.handItems = [];//items held in hands since there can be two one-handed items
+        this.traits = [];//chosen traits from element
+        this.element = null;//element
+    }
+
+    applyTrait(traitKey)//applying trait to the player
+    {
+        const trait = traits[traitKey];//look up the trait info
+        if (!trait) return;//failsafe
+
+        this.traits.push(traitKey);//remember which trait was chosen
+        this.element = trait.element;//element that comes from the trait
+
+        //apply the stat bonuses
+        this.maxHp = this.maxHp + trait.maxHpBonus;
+        this.hp = this.hp + trait.maxHpBonus;
+        this.atk = this.atk + trait.atkBonus;
+        this.def = this.def + trait.defBonus;
+
+    }
+
+    cantWeildItem(item)//some traits forbid items
+    {
+        const itemClassName = item.constructor.name;//takes the name of the passed in item
+
+        for (const traitKey of this.traits)//check every trait the player has
+        {
+            const trait = traits[traitKey];
+            if (trait && trait.cantWeild.includes(itemClassName)) 
+            {
+                return true;//forbidden
+            }
+        }
+        return false;//no trait forbids it
+    }
+
+    damageMultiplierAgainst(target) {
+        const targetElement = target.element;
+        if (this.element === null || this.element === undefined || targetElement === null || targetElement === undefined) 
+        {
+            return 1;
+        }
+        return effectiveness[this.element][targetElement] || 1;//default 1 if something's missing
     }
     get symbol() {
         return "@";
@@ -704,7 +942,8 @@ class UpStairway extends Entity {
         return super.parent;
     }
     set parent(newparent) {
-        if (newparent !== null && !(newparent instanceof Level)) {
+        if (newparent !== null && !(newparent instanceof Level)) 
+        {
             throw new Error("must be a level");
         }
         super.parent = newparent;
@@ -960,6 +1199,7 @@ class badGuy extends Entity {
         this.goal = "ignore";//default fallback goal is ignore
         this.equipment = new Map();
         this.handItems = [];
+        this.element = null;//yeah i'm going to hard code their elements
     }
     
     get parent() {
@@ -989,6 +1229,7 @@ class hilichurl extends badGuy {
         this.hp = 30;
         this.atk = 10; //more than a regular badGuy
         this.def = 2;
+        this.element = "pyro";
     }
 
     get symbol() {
@@ -1013,6 +1254,7 @@ class slime extends badGuy {
         this.hp = 50;
         this.atk = 15; //stronger than a hilichurl by a bit
         this.def = 3;
+        this.element = "hydro";
     }
 
     get symbol() {
@@ -1033,6 +1275,7 @@ class treasureHoarder extends badGuy {
         this.hp = 20;
         this.atk = 8;
         this.def = 1;
+        this.element = "geo";
     }
 
     get symbol() {
@@ -1057,6 +1300,7 @@ class dog extends badGuy {
         this.hp = 15;
         this.atk = 5;
         this.def = 1;
+        this.element = "anemo";
     }
 
     get symbol() {
@@ -1508,7 +1752,20 @@ class attackAction extends Action {
     }
     execute() {
         const variance = uniformrandom(4) - 2; // -2 to 2. this adds randomness to the attacks
-        const damage = Math.max(1, (this.doer.atk + variance) - this.target.def);//the amount of damage done is the attacker's attack value + the amount of randomness defined in the previous line, then minus the attackee's defense value (also negative or zero failsafe)
+
+        let elementMultiplier = 1;//1 by default if no elements
+        if (this.doer.element && this.target.element)//only do the matchup thing if both sides have an element (both should as of this comment unless i messed it up)
+        {
+            const effectivenessRow = effectiveness[this.doer.element];//the attacker's entire row of the table
+            if (effectivenessRow && effectivenessRow[this.target.element] !== undefined)//failsafe in case a matchup was never defined
+            {
+                elementMultiplier = effectivenessRow[this.target.element];//the speicific multiplier from the attacker's row
+            }
+        }
+
+        //damage = attack + randomness - defense, then multiplied by the element matchup (rounded, min 1)
+        const bDamage = (this.doer.atk + variance) - this.target.def;//base damage
+        const damage = Math.max(1, Math.round(bDamage * elementMultiplier));//the original negative/zero failsafe
         this.target.hp -= damage;
 
         const attackerName = this.doer.name || this.doer.constructor.name;//get the name of the attacker for display
@@ -1521,6 +1778,7 @@ class attackAction extends Action {
                 theCurrentPlayer = null;
                 theCurrentLevel = null;
                 updateHealthDisplayer();
+                updateTraitDisplayer();//clear the trait box since there is no player
             }
             return;//leave early
         }
@@ -1618,6 +1876,7 @@ class climbStairsAction extends Action {
                 theCurrentPlayer = null;
                 theCurrentLevel = null;
                 updateHealthDisplayer();
+                updateTraitDisplayer();//clear the trait box since there is no player
             }
             return;
         }
@@ -1876,6 +2135,11 @@ class putOnAction extends Action {
         }
         
         const itemName = this.item.constructor.name.toLowerCase();
+        if (this.doer.cantWeildItem && this.doer.cantWeildItem(this.item))//first part is mostly a failsafe
+        {
+            logMessage("one of your traits makes it so you can't use the " + itemName);//trait restrictions
+            return;
+        }
 
         if (slot === "hand") 
         {
